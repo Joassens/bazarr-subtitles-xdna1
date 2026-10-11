@@ -1,0 +1,9 @@
+.env
+*.log
+__pycache__/
+*.pyc
+compose.override.yml
+server.log
+# your real configuration, secrets and its history (copy config.example to config)
+/config/
+secrets.env

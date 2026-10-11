@@ -1,0 +1,17 @@
+# Example only: replace the placeholders. Keep real API keys out of git (use config/secrets.env).
+services:
+  whisperbridge:
+    image: mccloud/bazarr-openai-whisperbridge     # the upstream image provides the Python environment
+    container_name: whisperbridge
+    ports:
+      - "9500:9000"                                # point Bazarr's Whisper provider at http://<host>:9500
+    environment:
+      OPENAI_API_KEY: "not-needed"                 # required by the OpenAI client library; everything else
+                                                   # is configured in config/bridge.json (see config.example/)
+    volumes:
+      - ./bridge.py:/app/bazarr-openai-whisperbridge.py:ro
+      - ../subcfg/subcfg.py:/app/subcfg.py:ro      # shared configuration library
+      - ../config:/config                          # bridge.json, schemas/, secrets.env (copy ../config.example);
+                                                   # read-write so the web UI can save (needs ui.token); use :ro for view-only
+      - ./ui:/app/ui:ro                            # the web UI at /ui
+    restart: unless-stopped

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "resource_guard": {
+      "type": "object",
+      "properties": {
+        "min_free_host_ram_gb": {
+          "type": "number",
+          "default": 12,
+          "title": "Minimum free host RAM (GB)",
+          "description": "Refuse to activate a model or backend that would leave less than this.",
+          "minimum": 0
+        },
+        "max_concurrent_llm_models": {
+          "type": "integer",
+          "default": 1,
+          "title": "Max LLM models loaded at once",
+          "minimum": 1
+        },
+        "heavy_jobs_window": {
+          "type": "string",
+          "default": "",
+          "title": "Window for heavy jobs (HH:MM-HH:MM)",
+          "description": "Empty = any time."
+        }
+      }
+    }
+  },
+  "$id": "settings"
+}
