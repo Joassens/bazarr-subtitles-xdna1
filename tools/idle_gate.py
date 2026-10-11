@@ -36,6 +36,8 @@ class State:
         self.inflight = 0
         self.waiting = 0
         self.forwarded = 0                       # requests the gate sent upstream
+        self.completed = 0                       # ... of which are finished (the server counts a request when it finishes)
+        self._suspect = None                     # since when the server's counter is ahead of what the gate explains
         self.last_other = 0.0                    # last time someone else was seen using the LLM
         self.reason = "starting"
         self._base = None                        # request counter at the start, minus what the gate forwarded
@@ -52,17 +54,24 @@ class State:
         stats = self.get_json(a.upstream + "/api/v1/stats")
         health = self.get_json(a.upstream + "/api/v1/health")
         with self.lock:
-            own, inflight = self.forwarded, self.inflight
+            own, inflight = self.completed, self.inflight
         if stats and "request_count_total" in stats:
             total = stats["request_count_total"]
             if self._base is None:
                 self._base = total - own
             expected = self._base + own                      # what the counter reads if only the gate sent requests
             if total > expected:
-                self.last_other, self.reason = now, "another client sent a request"
-                self._base = total - own
-            elif total < expected and not inflight:          # an own request that was never counted (error): resync
-                self._base = total - own
+                # Maybe just the instant between the server counting a request and the gate noting it finished: only
+                # a difference that is still there at the next poll is another client.
+                if self._suspect is None:
+                    self._suspect = now
+                elif now - self._suspect >= self.a.poll_s * 0.9:
+                    self.last_other, self.reason = now, "another client sent a request"
+                    self._base, self._suspect = total - own, None
+            else:
+                self._suspect = None
+                if total < expected and not inflight:        # an own request that was never counted (error): resync
+                    self._base = total - own
         if health and not inflight:
             if any(m.get("is_busy") or m.get("is_streaming") for m in health.get("all_models_loaded", [])):
                 self.last_other, self.reason = now, "the LLM is busy"
@@ -155,6 +164,7 @@ def make_handler(st: State):
                 if gated:
                     with st.lock:
                         st.inflight -= 1
+                        st.completed += 1
 
         def do_GET(self):                        # noqa: N802
             if self.path.split("?")[0] == "/gate/status":

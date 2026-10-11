@@ -15,8 +15,9 @@ import idle_gate  # noqa: E402
 
 class Upstream:
     """Counts chat requests like Lemonade's /api/v1/stats does."""
-    def __init__(self):
+    def __init__(self, delay=0.0):
         self.count = 0
+        self.delay = delay
         outer = self
 
         class H(BaseHTTPRequestHandler):
@@ -43,7 +44,8 @@ class Upstream:
 
             def do_POST(self):                             # noqa: N802
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
-                outer.count += 1
+                time.sleep(outer.delay)
+                outer.count += 1                           # counted when it finishes, like the real server
                 self._json({"choices": [{"message": {"content": "OK"}}]})
 
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
@@ -93,6 +95,24 @@ class GateTest(unittest.TestCase):
         self.assertEqual(post(port), 503)                  # held for hold_max_s, then told to retry
         time.sleep(2.0)                                    # the quiet period passes
         self.assertEqual(post(port), 200)
+
+    def test_other_client_is_noticed_while_the_gate_is_busy_itself(self):
+        up = Upstream(delay=0.4)
+        st, port = start_gate(up.port, idle_s=5.0, hold_s=0.3)
+        stop = threading.Event()
+
+        def background():                                  # a client that always has a request in flight
+            while not stop.is_set():
+                post(port)
+        t = threading.Thread(target=background, daemon=True)
+        t.start()
+        time.sleep(2.5)
+        self.assertTrue(st.open(), "continuous own traffic alone must not close the lane")
+        post(up.port)                                      # someone else sends one request
+        time.sleep(1.5)
+        stop.set()
+        t.join(timeout=5)
+        self.assertFalse(st.open(), "another client's request must close the lane even while the gate is busy")
 
     def test_other_endpoints_pass_straight_through(self):
         up = Upstream()
