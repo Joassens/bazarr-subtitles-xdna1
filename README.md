@@ -120,6 +120,22 @@ last good configuration stays active). The environment variables below still wor
 
 ### Speaker diarization (optional)
 
+Two engines, chosen with `diarization.engine` (or `diarization_engine=` per request, or in the bridge settings):
+
+| Engine | Needs | Quality | Cost |
+|---|---|---|---|
+| `pyannote` | Hugging Face token and accepting the gated terms (below) | best: overlapped speech, fast exchanges | about 0.8x the audio length on 4 cores |
+| `embedding` | **nothing** (a 27 MB public model is downloaded once, pinned and checksum-verified) | coarser: windows of 1.5 s, no overlap detection; the number of speakers depends on `diarization.embedding.threshold` | about 15x cheaper |
+| `auto` (default) | | pyannote when it is usable, otherwise embedding | |
+
+In a test on 4 minutes of dialogue the token-free engine found the same 3 speakers as pyannote and agreed with it on 88 %
+of the speech time, in 16 s instead of several minutes; on a 30 s single-speaker clip it split one voice into two at
+the default threshold, so give it `min_speakers`/`max_speakers` when you know them. It builds on the WeSpeaker ResNet34
+embedding (the network pyannote uses) in the form published as `spurtcarl/finesub-speaker-embedding` (CC BY 4.0; credit
+WeSpeaker and pyannote).
+
+#### pyannote engine
+
 Uses [pyannote.audio](https://github.com/pyannote/pyannote-audio). You need a Hugging Face token and to accept
 the terms of the gated model once: <https://huggingface.co/pyannote/speaker-diarization-community-1>.
 Then set `HF_TOKEN` and `NPUSUBS_DIARIZE=1` (or send `diarize=true` per request). It runs on the CPU and
@@ -153,14 +169,13 @@ overlaps with the NPU working on the next request. **Never commit your token.**
 
 * Optional vocal separation (e.g. [BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp), MIT) in front of the
   music regions, to improve lyrics.
-* Token-free diarization option.
 * `/inference` (whisper.cpp) endpoint.
 * Smaller encoder contexts for short clips.
 
 ## Development
 
 ```bash
-pip install numpy fastapi httpx python-multipart
+pip install numpy scipy fastapi httpx python-multipart
 python -m unittest discover -s tests -v          # no NPU, model or torch needed
 python subcfg/gen_schemas.py config.example/schemas   # regenerate the settings schemas (one table is the source of truth)
 ```

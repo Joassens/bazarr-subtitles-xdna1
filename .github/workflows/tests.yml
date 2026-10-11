@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.11"
       # The unit tests need no NPU, no model and no torch: only numpy and the bridge UI's web stack.
-      - run: pip install numpy fastapi httpx python-multipart
+      - run: pip install numpy scipy fastapi httpx python-multipart
       - run: python -m unittest discover -s tests -v
       - name: Config schemas are up to date
         run: |
