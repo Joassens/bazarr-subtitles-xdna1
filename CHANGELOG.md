@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (first release)
 
 ### Web UI and configuration (bridge)
 - **Shared configuration**: settings live in JSON files with schemas (`config.example/`), hot reloaded, invalid files
