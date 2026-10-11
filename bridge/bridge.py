@@ -1059,6 +1059,7 @@ def translate_segments_via_llm(segments, video_file: str | None = None, source_l
 # whisper-asr-webservice container itself). Adds a per-word "speaker" field.
 WHISPER_DIARIZE = os.getenv('WHISPER_DIARIZE', 'true').lower() == 'true'
 WHISPER_MIN_SPEAKERS = os.getenv('WHISPER_MIN_SPEAKERS', '')
+WHISPER_DIARIZE_ENGINE = os.getenv('WHISPER_DIARIZE_ENGINE', 'auto')    # auto | pyannote | embedding (token-free)
 WHISPER_MAX_SPEAKERS = os.getenv('WHISPER_MAX_SPEAKERS', '')
 # Use the native backend whenever it is reachable, instead of whichever of the two answers fastest.
 # For a dedicated NPU/GPU transcription service that should always win over the shared LLM host.
@@ -1118,6 +1119,8 @@ def _call_whisper_asr_native(opus: io.BytesIO, language: str | None, prompt: str
         params["initial_prompt"] = prompt
     if WHISPER_DIARIZE:
         params["diarize"] = "true"
+        if WHISPER_DIARIZE_ENGINE and WHISPER_DIARIZE_ENGINE != "auto":
+            params["diarization_engine"] = WHISPER_DIARIZE_ENGINE
         if WHISPER_MIN_SPEAKERS:
             params["min_speakers"] = WHISPER_MIN_SPEAKERS
         if WHISPER_MAX_SPEAKERS:
@@ -1293,7 +1296,7 @@ _CFG_SIMPLE = {
     'backends.timeout_s': 'WHISPER_ASR_TIMEOUT', 'backends.prefer_native': 'WHISPER_PREFER_NATIVE',
     'backends.retry_offline_s': 'NATIVE_RETRY_SECS', 'backends.probe_timeout_s': 'BACKEND_PROBE_TIMEOUT_SECS',
     'diarization.enabled': 'WHISPER_DIARIZE', 'diarization.min_speakers': 'WHISPER_MIN_SPEAKERS',
-    'diarization.max_speakers': 'WHISPER_MAX_SPEAKERS',
+    'diarization.max_speakers': 'WHISPER_MAX_SPEAKERS', 'diarization.engine': 'WHISPER_DIARIZE_ENGINE',
     'translation.batch_size': 'TRANSLATE_BATCH_SIZE', 'translation.context_lines': 'TRANSLATE_CONTEXT_LINES',
     'translation.temperature': 'TRANSLATE_TEMPERATURE', 'translation.keep_honorifics': 'TRANSLATE_KEEP_HONORIFICS',
     'translation.bible': 'TRANSLATE_BIBLE', 'translation.review': 'TRANSLATE_REVIEW',

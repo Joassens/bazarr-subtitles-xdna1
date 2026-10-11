@@ -123,6 +123,54 @@
           "default": "pyannote/speaker-diarization-community-1",
           "title": "Diarization model",
           "x-env": "NPUSUBS_DIARIZE_MODEL"
+        },
+        "engine": {
+          "type": "string",
+          "default": "auto",
+          "title": "Diarization engine",
+          "description": "pyannote = best, needs a Hugging Face token. embedding = token-free and about 15x cheaper, but coarser (no overlapped speech, cannot split a very fast back-and-forth). auto = pyannote when it is usable, otherwise embedding.",
+          "x-env": "NPUSUBS_DIARIZE_ENGINE",
+          "enum": [
+            "auto",
+            "pyannote",
+            "embedding"
+          ]
+        },
+        "embedding": {
+          "type": "object",
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "default": 0.8,
+              "title": "Embedding engine: how different two voices must be",
+              "description": "Cosine distance at which clusters stay apart. Lower = more speakers, higher = fewer. 0.8 gave the right number of speakers in tests.",
+              "minimum": 0.3,
+              "maximum": 1.2
+            },
+            "window_s": {
+              "type": "number",
+              "default": 1.5,
+              "title": "Embedding engine: window (s)",
+              "description": "Length of the audio piece that gets one voice print.",
+              "minimum": 0.8,
+              "maximum": 4
+            },
+            "hop_s": {
+              "type": "number",
+              "default": 0.5,
+              "title": "Embedding engine: step (s)",
+              "description": "How far the window moves; also the finest speaker change it can see.",
+              "minimum": 0.2,
+              "maximum": 2
+            },
+            "min_speaker_s": {
+              "type": "number",
+              "default": 3.0,
+              "title": "Embedding engine: shortest speaker (s)",
+              "description": "A voice that speaks less than this in total is merged into the nearest other one.",
+              "minimum": 0
+            }
+          }
         }
       }
     },

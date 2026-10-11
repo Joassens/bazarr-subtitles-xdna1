@@ -12,12 +12,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from . import __version__, audio as audio_mod, config, filters, subtitles
 from .diarize import Diarizer, assign_speakers, run_on_regions
+from .diarize_local import DiarizerRouter, LocalDiarizer
 from .engine import Engine
 
 log = logging.getLogger("npusubs")
 app = FastAPI(title="npusubs", version=__version__)
 engine = Engine()
-diarizer = Diarizer()
+diarizer = DiarizerRouter(Diarizer(), LocalDiarizer())
 _state = {"loading": True, "error": None}
 
 
@@ -55,7 +56,7 @@ def _lang(code: Optional[str]) -> Optional[str]:
 
 
 def _run(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min_spk, max_spk, filter_: bool = True,
-         beam_size: Optional[int] = None):
+         beam_size: Optional[int] = None, diarize_engine: Optional[str] = None):
     try:
         wav = audio_mod.decode(raw, raw_pcm=raw_pcm)
     except audio_mod.AudioError as exc:
@@ -66,8 +67,10 @@ def _run(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min
     # plus pyannote at the same time can exhaust a small container). NPUSUBS_DIARIZE_PARALLEL=1 overlaps them.
     box: dict = {}
     do_diarize = bool(diarize)
-    if do_diarize and not diarizer.available:
-        log.warning("diarize requested but pyannote/HF_TOKEN unavailable; continuing without speakers")
+    chosen = diarizer.pick(diarize_engine)
+    if do_diarize and not chosen.available:
+        log.warning("diarize requested but the %s engine is unavailable (%s); continuing without speakers",
+                    diarizer.engine_name(diarize_engine), chosen.status)
         do_diarize = False
 
     def _diarize() -> None:
@@ -75,7 +78,7 @@ def _run(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min
             t0 = time.time()
             # speech AND music (songs, openings, endings): lyrics are subtitled too, so they get speakers
             regions = engine.vad.regions(wav) if engine.use_vad else []
-            box["turns"] = run_on_regions(diarizer, wav, regions, min_spk, max_spk)
+            box["turns"] = run_on_regions(chosen, wav, regions, min_spk, max_spk)
             log.info("diarization: %d turns in %.1fs", len(box["turns"]), time.time() - t0)
         except Exception:                                            # noqa: BLE001
             log.exception("diarization failed; continuing without speakers")
@@ -152,8 +155,11 @@ def asr(audio_file: UploadFile = File(...),
         word_timestamps: bool = Query(True), output: str = Query("txt"),
         diarize: Optional[bool] = Query(None), min_speakers: Optional[int] = Query(None),
         max_speakers: Optional[int] = Query(None), video_file: Optional[str] = Query(None),
-        beam_size: Optional[int] = Query(None, description="1 = greedy (fast); default NPUSUBS_BEAM")):
+        beam_size: Optional[int] = Query(None, description="1 = greedy (fast); default NPUSUBS_BEAM"),
+        diarization_engine: Optional[str] = Query(None, description="auto | pyannote | embedding (token-free); default from the config")):
     _need_ready()
+    if diarization_engine and diarization_engine not in DiarizerRouter.ENGINES:
+        raise HTTPException(400, f"diarization_engine must be one of {', '.join(DiarizerRouter.ENGINES)}")
     # A profile (config/profiles/*.json matching the media path and language) changes these defaults per request;
     # explicit query parameters from the caller still win.
     ctx = _context(video_file, language)
@@ -167,7 +173,8 @@ def asr(audio_file: UploadFile = File(...),
     if diarize is None:
         diarize = bool(config.get("diarization.default", context=ctx))
     res = _run(audio_file.file.read(), raw_pcm=not encode, language=language, task=task, prompt=initial_prompt,
-               vad=vad_filter, diarize=diarize, min_spk=min_speakers, max_spk=max_speakers, beam_size=beam_size)
+               vad=vad_filter, diarize=diarize, min_spk=min_speakers, max_spk=max_speakers, beam_size=beam_size,
+               diarize_engine=diarization_engine)
     res["profile"] = prof.get("name") if prof else None
     return _render(res, output.lower(), ctx)
 

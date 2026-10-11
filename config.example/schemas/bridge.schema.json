@@ -130,6 +130,18 @@
           "title": "Ask for speaker labels",
           "x-env": "WHISPER_DIARIZE"
         },
+        "engine": {
+          "type": "string",
+          "default": "auto",
+          "title": "Diarization engine",
+          "description": "Which engine npusubs uses: auto (its own setting), pyannote (best, needs a Hugging Face token there) or embedding (token-free, coarser).",
+          "x-env": "WHISPER_DIARIZE_ENGINE",
+          "enum": [
+            "auto",
+            "pyannote",
+            "embedding"
+          ]
+        },
         "min_speakers": {
           "type": "string",
           "default": "",

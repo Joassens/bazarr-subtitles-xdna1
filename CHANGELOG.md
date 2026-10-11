@@ -16,6 +16,7 @@
 - CI runs the unit tests and checks that the generated schemas are current.
 
 ### npusubs
+- Token-free speaker diarization (`diarization.engine`: auto, pyannote, embedding), also selectable per request and in the bridge.
 - Whisper large-v3-turbo with the encoder on the AMD XDNA 1 NPU, `whisper-asr-webservice` and OpenAI-compatible APIs.
 - Silero VAD with time mapping, music/lyrics regions, hallucination filters, subtitle formatting (CJK aware).
 - Optional speaker diarization (pyannote community-1), beam search by default (accuracy over speed).
