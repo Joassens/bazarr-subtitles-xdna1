@@ -24,7 +24,7 @@ The bridge serves a small web UI at `/ui` on its existing port, with no build st
 Mount the `ui/` folder next to `bridge.py` (`./ui:/app/ui:ro`, see the compose example).
 
 * **Dashboard**: bridge version and uptime, config health, live status of the speech services (for npusubs also the
-  model, beam, diarization and the job running on the NPU right now), the translation LLMs (which one is used, what
+  model, beam, diarization and the job running on the NPU right now, with a progress bar and the latest lines Whisper has written, like Lingarr shows its translation), the translation LLMs (which one is used, what
   Lemonade has loaded), Sonarr/Radarr, and the last 50 requests (file, task, backends used, status, time).
 * **Backends**: the speech services in order of preference and the LLM endpoints, with latency and which one is in use.
 * **Configuration**: every setting of `bridge`, `npusubs` and `settings` with description, current value, and where it
