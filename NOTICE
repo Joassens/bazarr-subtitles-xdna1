@@ -1,0 +1,18 @@
+npusubs depends on, but does not bundle, the following projects. Their licences apply to them.
+
+  drakosha/whisper-xdna          MIT                 NPU Whisper encoder (XRT / MLIR-AIE based)
+  Xilinx/mlir-aie                Apache-2.0 (LLVM)   AIE compiler toolchain used by whisper-xdna
+  openai/whisper                 MIT                 model code, tokenizer, word-timestamp alignment
+  snakers4/silero-vad            MIT                 voice activity detection
+  pyannote/pyannote-audio        MIT                 speaker diarization (models are gated, own terms)
+  FastAPI / Uvicorn              MIT / BSD           HTTP server
+
+The bridge/ directory contains a modified copy of McCloudS/bazarr-openai-whisperbridge, Apache-2.0
+(see bridge/LICENSE and bridge/NOTICE-CHANGES.md). The rest of the repository is MIT.
+
+Model weights are downloaded at runtime and are not part of this repository:
+  openai/whisper large-v3-turbo  MIT
+  pyannote/speaker-diarization-community-1   CC-BY-4.0, gated: accept the terms on huggingface.co
+
+No source code was copied from GPL-licensed projects; ideas (VAD packing, optional vocal separation before
+transcription) were taken from public documentation of other subtitle tools.

@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "backends": {
+      "type": "object",
+      "properties": {
+        "speech_urls": {
+          "type": "array",
+          "default": [],
+          "title": "Speech services",
+          "description": "whisper-asr-webservice compatible services, in order of preference. The first one that answers is used.",
+          "x-env": "WHISPER_ASR_URL",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prefer_native": {
+          "type": "boolean",
+          "default": false,
+          "title": "Prefer speech services",
+          "description": "Use them whenever reachable, not only when faster than the OpenAI-compatible fallback.",
+          "x-env": "WHISPER_PREFER_NATIVE"
+        },
+        "timeout_s": {
+          "type": "number",
+          "default": 600,
+          "title": "Transcription timeout (s)",
+          "description": "A film on a slow backend can take hours.",
+          "x-env": "WHISPER_ASR_TIMEOUT",
+          "minimum": 10
+        },
+        "retry_offline_s": {
+          "type": "number",
+          "default": 60,
+          "title": "Retry offline backend after (s)",
+          "x-env": "NATIVE_RETRY_SECS",
+          "minimum": 0
+        },
+        "probe_timeout_s": {
+          "type": "number",
+          "default": 3,
+          "title": "Health probe timeout (s)",
+          "x-env": "BACKEND_PROBE_TIMEOUT_SECS",
+          "minimum": 0.5
+        }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "properties": {
+        "primary_url": {
+          "type": "string",
+          "default": "",
+          "title": "Primary LLM endpoint",
+          "description": "OpenAI-compatible base URL (ends in /v1).",
+          "x-env": "OPENAI_BASE_URL"
+        },
+        "fallback_url": {
+          "type": "string",
+          "default": "",
+          "title": "Fallback LLM / whisper endpoint",
+          "x-env": "OPENAI_BASE_URL_FALLBACK"
+        },
+        "model": {
+          "type": "string",
+          "default": "Qwen3-4B-Instruct-2507-GGUF-Q4_K_M",
+          "title": "Translation model (primary)",
+          "x-env": "TRANSLATE_LLM_MODEL"
+        },
+        "model_fallback": {
+          "type": "string",
+          "default": "",
+          "title": "Translation model (fallback)",
+          "description": "Empty = same as the primary model.",
+          "x-env": "TRANSLATE_LLM_MODEL_FALLBACK"
+        },
+        "dedicated_url": {
+          "type": "string",
+          "default": "",
+          "title": "Dedicated translation LLM",
+          "description": "When set and reachable it is used for every LLM call.",
+          "x-env": "TRANSLATE_LLM_BASE_URL"
+        },
+        "dedicated_model": {
+          "type": "string",
+          "default": "default",
+          "title": "Dedicated LLM model name",
+          "x-env": "TRANSLATE_LLM_MODEL_DEDICATED"
+        }
+      }
+    },
+    "whisper": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "default": "whisper-1",
+          "title": "Whisper model name (OpenAI endpoints)",
+          "x-env": "WHISPER_MODEL"
+        },
+        "translate_model": {
+          "type": "string",
+          "default": "",
+          "title": "Whisper model for translate tasks",
+          "description": "Empty = same as the model.",
+          "x-env": "WHISPER_TRANSLATE_MODEL"
+        },
+        "initial_prompt": {
+          "type": "string",
+          "default": "",
+          "title": "Static vocabulary hint",
+          "description": "Prepended to the automatic show context.",
+          "x-env": "WHISPER_INITIAL_PROMPT"
+        },
+        "forced_detect_language": {
+          "type": "string",
+          "default": "en",
+          "title": "Language reported to Bazarr",
+          "x-env": "FORCE_DETECTED_LANGUAGE_TO"
+        }
+      }
+    },
+    "diarization": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "title": "Ask for speaker labels",
+          "x-env": "WHISPER_DIARIZE"
+        },
+        "min_speakers": {
+          "type": "string",
+          "default": "",
+          "title": "Minimum speakers",
+          "x-env": "WHISPER_MIN_SPEAKERS"
+        },
+        "max_speakers": {
+          "type": "string",
+          "default": "",
+          "title": "Maximum speakers",
+          "x-env": "WHISPER_MAX_SPEAKERS"
+        }
+      }
+    },
+    "translation": {
+      "type": "object",
+      "properties": {
+        "batch_size": {
+          "type": "integer",
+          "default": 5,
+          "title": "Lines per translation batch",
+          "x-env": "TRANSLATE_BATCH_SIZE",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "context_lines": {
+          "type": "integer",
+          "default": 6,
+          "title": "Earlier translated lines shown as context",
+          "x-env": "TRANSLATE_CONTEXT_LINES",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0.2,
+          "title": "Temperature",
+          "x-env": "TRANSLATE_TEMPERATURE",
+          "minimum": 0,
+          "maximum": 1.5
+        },
+        "keep_honorifics": {
+          "type": "boolean",
+          "default": true,
+          "title": "Keep Japanese honorifics (-san, -kun)",
+          "x-env": "TRANSLATE_KEEP_HONORIFICS"
+        },
+        "bible": {
+          "type": "boolean",
+          "default": true,
+          "title": "Scene bible pass",
+          "description": "Read the whole script first and write down names, terms, genders.",
+          "x-env": "TRANSLATE_BIBLE"
+        },
+        "review": {
+          "type": "boolean",
+          "default": true,
+          "title": "Review pass",
+          "description": "Conservative editor pass that only accepts real corrections.",
+          "x-env": "TRANSLATE_REVIEW"
+        },
+        "review_batch": {
+          "type": "integer",
+          "default": 10,
+          "title": "Lines per review batch",
+          "x-env": "TRANSLATE_REVIEW_BATCH",
+          "minimum": 1,
+          "maximum": 40
+        },
+        "bible_max_chars": {
+          "type": "integer",
+          "default": 24000,
+          "title": "Max script size for the bible (chars)",
+          "x-env": "TRANSLATE_BIBLE_MAX_CHARS",
+          "minimum": 1000
+        },
+        "debug": {
+          "type": "boolean",
+          "default": false,
+          "title": "Log the bible and every review edit",
+          "x-env": "TRANSLATE_DEBUG"
+        }
+      }
+    },
+    "subtitles": {
+      "type": "object",
+      "properties": {
+        "max_line_length": {
+          "type": "integer",
+          "default": 42,
+          "title": "Max characters per line",
+          "x-env": "MAX_LINE_LENGTH",
+          "minimum": 10,
+          "maximum": 80
+        },
+        "gap_split_s": {
+          "type": "number",
+          "default": 0.4,
+          "title": "Silence that starts a new subtitle (s)",
+          "x-env": "GAP_SPLIT_SECS",
+          "minimum": 0.1,
+          "maximum": 5
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "phantom_start_max_s": {
+          "type": "number",
+          "default": 1.0,
+          "title": "Phantom cue window at start (s)",
+          "description": "0 disables.",
+          "x-env": "PHANTOM_START_MAX_SECS",
+          "minimum": 0
+        },
+        "phantom_duration_max_s": {
+          "type": "number",
+          "default": 2.0,
+          "title": "Phantom cue max duration (s)",
+          "x-env": "PHANTOM_DURATION_MAX_SECS",
+          "minimum": 0
+        },
+        "repetition_min_run": {
+          "type": "integer",
+          "default": 4,
+          "title": "Repetition loop: minimum repeats",
+          "description": "0 disables.",
+          "x-env": "REPETITION_MIN_RUN_LENGTH",
+          "minimum": 0
+        },
+        "repetition_max_period": {
+          "type": "integer",
+          "default": 3,
+          "title": "Repetition loop: pattern length",
+          "x-env": "REPETITION_MAX_PERIOD",
+          "minimum": 1
+        },
+        "global_duplicate_min": {
+          "type": "integer",
+          "default": 3,
+          "title": "Recurring hallucinated line: minimum count",
+          "description": "0 disables.",
+          "x-env": "GLOBAL_DUPLICATE_MIN_COUNT",
+          "minimum": 0
+        },
+        "skip_filename_pattern": {
+          "type": "string",
+          "default": "(?i)\\b(NC)?(OP|ED)\\d{0,2}\\b",
+          "title": "Skip files matching (OP/ED)",
+          "x-env": "SKIP_FILENAME_PATTERN"
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "max_upload_mb": {
+          "type": "integer",
+          "default": 24,
+          "title": "Max upload per chunk (MB)",
+          "x-env": "MAX_UPLOAD_MB",
+          "minimum": 1
+        },
+        "opus_kbps": {
+          "type": "integer",
+          "default": 24,
+          "title": "Opus bitrate (kbps)",
+          "x-env": "OPUS_BITRATE_KBPS",
+          "minimum": 6
+        },
+        "silence_window_s": {
+          "type": "number",
+          "default": 20,
+          "title": "Chunk split: silence search window (s)",
+          "x-env": "SILENCE_SEARCH_WINDOW_SECS"
+        },
+        "silence_noise_db": {
+          "type": "string",
+          "default": "-35dB",
+          "title": "Chunk split: silence threshold",
+          "x-env": "SILENCE_NOISE_DB"
+        },
+        "silence_min_s": {
+          "type": "number",
+          "default": 0.3,
+          "title": "Chunk split: minimum silence (s)",
+          "x-env": "SILENCE_MIN_DURATION_SECS"
+        }
+      }
+    },
+    "guard": {
+      "type": "object",
+      "properties": {
+        "heavy_window": {
+          "type": "string",
+          "default": "",
+          "title": "Allowed hours for jobs",
+          "description": "For example 01:00-07:00 (local time of the bridge; wraps past midnight). Jobs that arrive outside it wait. Empty = always.",
+          "x-env": "GUARD_HEAVY_WINDOW",
+          "pattern": "^$|^\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2}$"
+        },
+        "min_free_host_ram_gb": {
+          "type": "number",
+          "default": 0,
+          "title": "Minimum free host RAM for translations (GB)",
+          "description": "An iGPU takes its model memory from the host's RAM, so a big model can starve the host. Translation jobs wait while less is free. 0 = off. Needs the host RAM URL.",
+          "x-env": "GUARD_MIN_FREE_RAM_GB",
+          "minimum": 0
+        },
+        "host_ram_url": {
+          "type": "string",
+          "default": "",
+          "title": "Host RAM URL",
+          "description": "A read-only endpoint on the machine that owns the memory, answering JSON with mem_available_gb and mem_total_gb (see tools/hostmem_agent.py).",
+          "x-env": "GUARD_HOST_RAM_URL"
+        },
+        "max_llm_models": {
+          "type": "integer",
+          "default": 1,
+          "title": "Warn when more LLMs are loaded than this",
+          "description": "Shown on the dashboard; loading a second large model is what exhausted the host once.",
+          "x-env": "GUARD_MAX_LLM_MODELS",
+          "minimum": 1
+        },
+        "max_wait_s": {
+          "type": "number",
+          "default": 21600,
+          "title": "Longest a job waits for the guard (s)",
+          "description": "After this the request fails (Bazarr will see an error) instead of waiting forever.",
+          "x-env": "GUARD_MAX_WAIT_S",
+          "minimum": 60
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "title": "Web UI",
+          "description": "Serve the web UI at /ui.",
+          "x-env": "WEBUI_ENABLED"
+        },
+        "token": {
+          "type": "string",
+          "default": "",
+          "title": "Web UI access token",
+          "description": "Empty = no token (keep the bridge on a trusted LAN). Visit /ui?token=... once to log in.",
+          "x-env": "WEBUI_TOKEN",
+          "x-secret": true
+        }
+      }
+    },
+    "arr": {
+      "type": "object",
+      "properties": {
+        "sonarr_url": {
+          "type": "string",
+          "default": "",
+          "title": "Sonarr URL",
+          "description": "For show context in prompts.",
+          "x-env": "SONARR_URL"
+        },
+        "sonarr_api_key": {
+          "type": "string",
+          "default": "",
+          "title": "Sonarr API key",
+          "x-env": "SONARR_API_KEY",
+          "x-secret": true
+        },
+        "radarr_url": {
+          "type": "string",
+          "default": "",
+          "title": "Radarr URL",
+          "x-env": "RADARR_URL"
+        },
+        "radarr_api_key": {
+          "type": "string",
+          "default": "",
+          "title": "Radarr API key",
+          "x-env": "RADARR_API_KEY",
+          "x-secret": true
+        },
+        "cache_ttl_s": {
+          "type": "number",
+          "default": 1800,
+          "title": "Show-context cache (s)",
+          "x-env": "MEDIA_CACHE_TTL_SECS",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$id": "bridge"
+}

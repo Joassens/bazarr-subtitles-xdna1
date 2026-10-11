@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "string",
+      "default": "large-v3-turbo",
+      "title": "Whisper model",
+      "x-env": "NPUSUBS_MODEL",
+      "x-restart": true
+    },
+    "threads": {
+      "type": "integer",
+      "default": 8,
+      "title": "CPU threads for the decoder",
+      "x-env": "NPUSUBS_THREADS",
+      "minimum": 1,
+      "maximum": 64,
+      "x-restart": true
+    },
+    "queue_wait_s": {
+      "type": "number",
+      "default": 21600,
+      "title": "Max wait for the NPU (s)",
+      "description": "One job at a time.",
+      "x-env": "NPUSUBS_QUEUE_WAIT",
+      "minimum": 1
+    },
+    "beam": {
+      "type": "integer",
+      "default": 5,
+      "title": "Beam width",
+      "description": "1 = greedy (fast), 5 = accurate (about 4-5x slower).",
+      "x-env": "NPUSUBS_BEAM",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "vad": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "title": "Skip silence (VAD)",
+          "x-env": "NPUSUBS_VAD"
+        },
+        "threshold": {
+          "type": "number",
+          "default": 0.35,
+          "title": "VAD threshold",
+          "description": "Lower keeps more.",
+          "minimum": 0.05,
+          "maximum": 0.95
+        },
+        "min_silence_ms": {
+          "type": "integer",
+          "default": 600,
+          "title": "VAD minimum silence (ms)",
+          "minimum": 50
+        },
+        "speech_pad_ms": {
+          "type": "integer",
+          "default": 400,
+          "title": "VAD padding (ms)",
+          "minimum": 0
+        },
+        "min_speech_ms": {
+          "type": "integer",
+          "default": 150,
+          "title": "VAD minimum speech (ms)",
+          "minimum": 20
+        },
+        "join_gap_s": {
+          "type": "number",
+          "default": 1.5,
+          "title": "Merge speech closer than (s)",
+          "minimum": 0
+        },
+        "music": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "title": "Keep and transcribe songs",
+              "description": "Sustained loud non-speech counts as music.",
+              "x-env": "NPUSUBS_MUSIC"
+            },
+            "db": {
+              "type": "number",
+              "default": -33.0,
+              "title": "Music loudness threshold (dBFS)"
+            },
+            "min_s": {
+              "type": "number",
+              "default": 8.0,
+              "title": "Music minimum length (s)",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "diarization": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "boolean",
+          "default": false,
+          "title": "Diarize by default",
+          "description": "Needs HF_TOKEN and the gated model terms.",
+          "x-env": "NPUSUBS_DIARIZE"
+        },
+        "parallel": {
+          "type": "boolean",
+          "default": false,
+          "title": "Overlap diarization with transcription",
+          "description": "Higher peak memory.",
+          "x-env": "NPUSUBS_DIARIZE_PARALLEL"
+        },
+        "model": {
+          "type": "string",
+          "default": "pyannote/speaker-diarization-community-1",
+          "title": "Diarization model",
+          "x-env": "NPUSUBS_DIARIZE_MODEL"
+        }
+      }
+    },
+    "subtitles": {
+      "type": "object",
+      "properties": {
+        "max_line": {
+          "type": "integer",
+          "default": 42,
+          "title": "Max display columns per line",
+          "description": "CJK counts double.",
+          "x-env": "NPUSUBS_MAX_LINE",
+          "minimum": 10,
+          "maximum": 80
+        },
+        "gap_split_s": {
+          "type": "number",
+          "default": 0.5,
+          "title": "Silence that starts a new cue (s)",
+          "x-env": "NPUSUBS_GAP_SPLIT",
+          "minimum": 0.1
+        },
+        "speaker_style": {
+          "type": "string",
+          "default": "dash",
+          "title": "Speaker style",
+          "x-env": "NPUSUBS_SPEAKER_STYLE",
+          "enum": [
+            "none",
+            "dash",
+            "label"
+          ]
+        },
+        "min_duration_s": {
+          "type": "number",
+          "default": 0.8,
+          "title": "Minimum cue duration (s)",
+          "minimum": 0.2
+        },
+        "max_duration_s": {
+          "type": "number",
+          "default": 7.0,
+          "title": "Maximum cue duration (s)",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "$id": "npusubs"
+}

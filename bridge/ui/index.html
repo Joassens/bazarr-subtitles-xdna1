@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subtitle bridge</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#667085;--line:#e3e7ee;--acc:#2f6fed;--ok:#1a9d57;--warn:#d98a00;--bad:#d1383d;--chip:#eef2f8}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--ink:#e6ebf2;--mute:#8b97a8;--line:#273141;--acc:#6a9bff;--ok:#38c07c;--warn:#f0a928;--bad:#ff6b70;--chip:#222c3a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+h1{font-size:16px;margin:0 8px 0 0}nav{display:flex;gap:4px}nav a{padding:6px 12px;border-radius:8px;color:var(--mute);text-decoration:none;cursor:pointer}
+nav a.on{background:var(--chip);color:var(--ink);font-weight:600}.sp{flex:1}.muted{color:var(--mute)}
+main{padding:20px 20px 90px;max-width:1200px;margin:0 auto}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin:0 0 10px}
+.wide{grid-column:1/-1}.row{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;background:var(--mute)}.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--chip);color:var(--mute);font-size:12px;margin:0 4px 2px 0}.chip.acc{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+.chip.on{color:var(--ok)}.chip.off{color:var(--mute)}.chip.bad{color:var(--bad)}.chip.src-file{color:var(--acc)}.chip.src-env{color:var(--warn)}.chip.mod{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}.grow{flex:1;min-width:0;word-break:break-word}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:500;font-size:12px;border-top:0}
+input[type=search],input[type=text],input[type=number],select,textarea{padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;width:100%}
+input[type=search]{width:min(380px,100%)}textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;min-height:64px}
+input[type=checkbox]{width:18px;height:18px;vertical-align:middle}input:disabled,select:disabled,textarea:disabled{opacity:.55}
+tr.bad td{background:color-mix(in srgb,var(--bad) 8%,transparent)}tr.changed td{background:color-mix(in srgb,var(--warn) 7%,transparent)}
+button{padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}button:disabled{opacity:.5;cursor:default}button.link{border:0;background:none;color:var(--acc);padding:0 4px;font-size:12px}
+.err{color:var(--bad)}.sec{margin:22px 0 6px;font-size:15px}.tiny{font-size:12px}.num{text-align:right;white-space:nowrap}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:3}
+.bar .msg{flex:1;min-width:200px}.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.ok{color:var(--ok)}.diff-old{color:var(--bad)}.diff-new{color:var(--ok)}
+.orow{display:flex;gap:6px;align-items:flex-start;margin:4px 0;flex-wrap:wrap}.orow select,.orow input,.orow textarea{width:auto;min-width:130px;flex:1}
+.cols{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.form{display:grid;gap:10px;max-width:720px}.form label{display:block;font-size:12px;color:var(--mute);margin-bottom:2px}
+pre{white-space:pre-wrap;word-break:break-word;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;margin:0}td.diff{background:color-mix(in srgb,var(--warn) 16%,transparent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Subtitle bridge</h1>
+  <nav id="nav"><a data-t="dashboard">Dashboard</a><a data-t="backends">Backends</a><a data-t="config">Configuration</a><a data-t="profiles">Profiles</a><a data-t="playground">Playground</a><a data-t="history">History</a></nav>
+  <span class="sp"></span><span id="chip" class="muted tiny"></span>
+</header>
+<main id="view"><p class="muted">Loading…</p></main>
+<div id="bar" class="bar" hidden></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tab = (location.hash || "#dashboard").slice(1), status = null, config = null, filter = "", component = "bridge";
+let draft = {}, resets = new Set(), saveErrors = [], notice = "", history = null, compare = null;
+const dur = s => { if (s == null) return "–"; s = Math.round(s); const h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : m ? `${m}m ${s%60}s` : `${s}s`; };
+const ago = s => s < 90 ? "just now" : dur(s) + " ago";
+const dot = (ok, warn) => `<span class="dot ${ok ? "ok" : warn ? "warn" : "bad"}"></span>`;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+async function api(p, body) {
+  const opt = {credentials: "same-origin"};
+  if (body !== undefined) { opt.method = "POST"; opt.headers = {"Content-Type": "application/json", "X-Requested-With": "ui"}; opt.body = JSON.stringify(body); }
+  const r = await fetch(p, opt);
+  let data = null; try { data = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error((data && (data.error || (data.errors || []).join("; "))) || r.status); e.status = r.status; e.errors = data && data.errors; throw e; }
+  return data;
+}
+function val(r) {
+  if (r.secret) return r.value ? `<span class="muted">••••••••</span>` : `<span class="muted">(empty)</span>`;
+  const v = r.value;
+  if (typeof v === "boolean") return `<span class="chip ${v ? "on" : "off"}">${v ? "on" : "off"}</span>`;
+  if (Array.isArray(v)) return v.length ? v.map(x => `<div class="mono">${esc(x)}</div>`).join("") : `<span class="muted">(empty)</span>`;
+  if (v === "" || v == null) return `<span class="muted">(empty)</span>`;
+  return `<span class="mono">${esc(v)}</span>`;
+}
+function dashboard() {
+  const s = status, b = s.bridge, cfg = b.config;
+  const flags = Object.entries(b.flags).map(([k, v]) => `<span class="chip ${v ? "on" : "off"}">${esc(k.replace("_", " "))}: ${v ? "on" : "off"}</span>`).join("");
+  const cfgLine = !cfg ? `<span class="chip">config layer off</span>` :
+    cfg.errors.length ? `<div class="err tiny">${cfg.errors.map(esc).join("<br>")}</div>` : `<span class="chip on">config OK</span>`;
+  const speech = s.speech.length ? s.speech.map((x, i) => {
+    const d = x.detail || {}, cur = d.current;
+    return `<div class="row">${dot(x.ok)}<div class="grow"><b>${esc(x.url)}</b>
+      ${i === s.speech_in_use ? '<span class="chip acc">in use now</span>' : ""}<br>
+      <span class="muted tiny">${esc(x.kind)}${x.ms != null ? " · " + x.ms + " ms" : ""}${x.error ? " · " + esc(x.error) : ""}</span>
+      ${x.kind === "npusubs" ? `<div class="tiny">model ${esc(d.model)} · beam ${esc(d.beam)} · VAD ${d.vad ? "on" : "off"} · diarization: ${esc(d.diarization)} · ${esc(d.requests)} requests</div>
+        <div class="tiny">${cur ? `<span class="chip acc">NPU busy</span> ${dur(cur.audio_s)} audio, running ${dur(cur.running_s)}` : `<span class="chip on">NPU idle</span>`}</div>
+        ${(d.config_errors || []).length ? `<div class="err tiny">${d.config_errors.map(esc).join("<br>")}</div>` : ""}` : ""}
+      </div></div>`; }).join("") : `<p class="muted">No speech services configured; the OpenAI-compatible fallback is used.</p>`;
+  const llm = s.llm.filter(x => x.configured).map(x => `<div class="row">${dot(x.ok)}<div class="grow"><b>${esc(x.role)}</b>
+      ${x.role === s.llm_in_use ? '<span class="chip acc">used for translation</span>' : ""}<br>
+      <span class="mono">${esc(x.url)}</span><br><span class="muted tiny">model ${esc(x.model)}${x.ms != null ? " · " + x.ms + " ms" : ""}${x.error ? " · " + esc(x.error) : ""}</span>
+      ${x.loaded.length ? `<div class="tiny">loaded: ${x.loaded.map(esc).join(", ")}</div>` : ""}</div></div>`).join("") || `<p class="muted">No LLM endpoint configured.</p>`;
+  const arr = s.arr.length ? s.arr.map(x => `<div class="row">${dot(x.ok)}<div class="grow"><b>${esc(x.name)}</b> <span class="muted tiny">${esc(x.url)}${x.ms != null ? " · " + x.ms + " ms" : ""}</span></div></div>`).join("") : `<p class="muted">Not configured.</p>`;
+  const jobs = s.jobs.length ? `<table><tr><th>File</th><th>Task</th><th>Audio</th><th>Backends used</th><th>Status</th><th class="num">Time</th><th class="num">Started</th></tr>` +
+    s.jobs.map(j => `<tr><td class="grow">${j.has_srt || j.has_detail ? `<button class="link" data-act="openjob" data-id="${j.id}">${esc(j.file || "job " + j.id)}</button>` : esc(j.file || "–")}${j.profile ? ` <span class="chip acc">${esc(j.profile)}</span>` : ""}</td><td>${esc(j.task)}${j.language ? " · " + esc(j.language) : ""}</td><td>${j.pcm_mb} MB</td>
+      <td class="tiny">${(j.backends || []).map(esc).join("<br>") || "–"}</td>
+      <td>${j.status === "done" ? '<span class="chip on">done</span>' : j.status === "running" ? '<span class="chip acc">running</span>' : j.status === "waiting" ? `<span class="chip mod">waiting</span><div class="tiny muted">${esc(j.waiting_for)}</div>` : j.status === "skipped" ? '<span class="chip">skipped</span>' : `<span class="chip bad">error</span><div class="err tiny">${esc(j.error)}</div>`}</td>
+      <td class="num">${dur(j.running_s)}</td><td class="num muted">${ago(j.age_s)}</td></tr>`).join("") + `</table>` : `<p class="muted">No requests since the bridge started.</p>`;
+  return `<div class="grid">
+    <div class="card"><h2>Bridge</h2><div class="row"><div class="grow"><b>v${esc(b.version)}</b> <span class="muted">· up ${dur(b.uptime_s)}</span><br>${cfgLine}<div style="margin-top:6px">${flags}
+      <span class="chip ${b.prefer_native ? "on" : "off"}">prefer speech services: ${b.prefer_native ? "yes" : "no"}</span></div>
+      ${cfg ? `<div class="tiny muted">config: <span class="mono">${esc(cfg.dir)}</span> · ${cfg.files.map(f => esc(f.name) + (f.present ? " ✓" : " –")).join(" · ")}</div>` : ""}</div></div></div>
+    <div class="card"><h2>Speech services</h2>${speech}</div>
+    <div class="card"><h2>Translation LLM</h2>${llm}</div>
+    <div class="card"><h2>Sonarr / Radarr</h2>${arr}</div>
+    ${guardCard(s.guard)}
+    <div class="card wide"><h2>Recent requests</h2>${jobs}</div></div>`;
+}
+function guardCard(g) {
+  if (!g) return "";
+  const ram = g.ram, rows = [];
+  rows.push(`<div class="row">${dot(g.in_window)}<div class="grow"><b>Allowed hours</b> <span class="muted">${g.window ? esc(g.window) : "any time"}</span>
+    ${g.window ? `<br><span class="tiny muted">${g.in_window ? "inside the window now, jobs run" : "outside the window now, new jobs wait"}</span>` : ""}</div></div>`);
+  rows.push(`<div class="row">${dot(!g.min_free_ram_gb || !g.ram_configured || (ram && ram.free_gb >= g.min_free_ram_gb), g.ram_configured && !ram)}<div class="grow"><b>Host RAM</b>
+    ${ram ? `<span class="mono">${ram.free_gb.toFixed(1)} GB free of ${ram.total_gb.toFixed(1)}</span>` : g.ram_configured ? '<span class="muted">endpoint not answering</span>' : '<span class="muted">not monitored (set guard.host_ram_url)</span>'}
+    ${g.min_free_ram_gb ? `<br><span class="tiny muted">translations wait below ${g.min_free_ram_gb} GB free</span>` : ""}</div></div>`);
+  const n = (g.llm_loaded || []).length;
+  rows.push(`<div class="row">${dot(n <= g.max_llm_models)}<div class="grow"><b>LLMs loaded</b> <span class="mono">${n} / ${g.max_llm_models}</span>
+    ${n ? `<br><span class="tiny">${g.llm_loaded.map(esc).join(", ")}</span>` : ""}${n > g.max_llm_models ? '<br><span class="err tiny">more than allowed: check the host RAM</span>' : ""}</div></div>`);
+  if (g.waiting) rows.push(`<div class="row">${dot(false, true)}<div class="grow"><b>${g.waiting} job${g.waiting > 1 ? "s" : ""} waiting</b></div></div>`);
+  return `<div class="card"><h2>Resource guard</h2>${rows.join("")}</div>`;
+}
+function jobView() {
+  const d = S.jobView, j = d.job, det = d.detail;
+  const head = `<div class="tools"><button data-act="closejob">← Back</button><b>${esc(j.file || "job " + j.id)}</b><span class="muted">${esc(j.task)}${j.language ? " · " + esc(j.language) : ""} · ${j.status} · ${dur(j.seconds)}</span>
+    ${j.profile ? `<span class="chip acc">${esc(j.profile)}</span>` : ""}${d.srt != null ? `<a href="/ui/api/jobs/${j.id}/srt"><button>Download SRT</button></a>` : ""}</div>${j.error ? `<p class="err">${esc(j.error)}</p>` : ""}${d.note ? `<p class="muted">${esc(d.note)}</p>` : ""}`;
+  let body = "";
+  if (det) {
+    const changed = det.source.filter((_, i) => det.draft[i] !== det.final[i]).length;
+    body += `<p class="muted tiny">${det.source.length} lines; the review ${det.review ? `changed <b>${changed}</b> of them (highlighted, with the reason)` : "was off"}.</p>
+      ${det.bible ? `<details><summary>Translation bible</summary><pre>${esc(det.bible)}</pre></details>` : ""}
+      <table><tr><th>#</th><th>Source</th><th>Draft</th><th>Final</th><th>Why</th></tr>${det.source.map((s, i) => { const c = det.draft[i] !== det.final[i];
+        return `<tr><td class="num muted tiny">${i + 1}</td><td>${esc(s)}</td><td>${esc(det.draft[i])}</td><td class="${c ? "diff" : ""}">${esc(det.final[i])}</td><td class="tiny muted">${esc(det.why[i] || "")}</td></tr>`; }).join("")}</table>`;
+  } else if (d.srt != null) body += `<pre>${esc(d.srt)}</pre>`;
+  return `<div class="card">${head}${body}</div>`;
+}
+function backends() {
+  const s = status;
+  const speech = s.speech.map((x, i) => `<div class="row">${dot(x.ok)}<div class="grow"><b>${i + 1}. ${esc(x.url)}</b>
+    ${i === s.speech_in_use ? '<span class="chip acc">in use now</span>' : ""}<br><span class="muted tiny">${esc(x.kind)}${x.ms != null ? " · " + x.ms + " ms" : ""}${x.error ? " · " + esc(x.error) : ""}</span></div></div>`).join("");
+  const rows = s.llm.map(x => x.configured ? `<tr><td>${dot(x.ok)} ${esc(x.role)}${x.role === s.llm_in_use ? ' <span class="chip acc">in use now</span>' : ""}</td>
+    <td class="mono">${esc(x.url)}</td><td class="mono">${esc(x.model)}</td><td class="num">${x.ms != null ? x.ms + " ms" : "–"}</td>
+    <td class="tiny">${x.loaded.length ? "loaded: " + x.loaded.map(esc).join(", ") : x.available.slice(0, 4).map(esc).join(", ")}</td></tr>` :
+    `<tr><td>${esc(x.role)}</td><td colspan="4" class="muted">not configured</td></tr>`).join("");
+  return `<div class="card"><h2>Speech services, in order of preference</h2>
+      <p class="muted tiny">The first reachable service is used. An offline one is skipped for a while so it does not slow each request.
+      ${s.bridge.prefer_native ? "These are used whenever reachable." : "An OpenAI-compatible fallback may win when it answers faster."}
+      Change the list under Configuration → bridge → <span class="mono">backends.speech_urls</span> (one URL per line).</p>${speech || '<p class="muted">None configured.</p>'}</div>
+    <div class="card" style="margin-top:16px"><h2>Translation LLM</h2>
+      <p class="muted tiny">A dedicated LLM wins whenever it is reachable; otherwise the faster of primary and fallback is used.</p>
+      <table><tr><th>Role</th><th>Endpoint</th><th>Model</th><th class="num">Latency</th><th>Models</th></tr>${rows}</table></div>`;
+}
+
+// ---------------------------------------------------------------- configuration (view + edit)
+const SECTIONS = {backends: "Backends", llm: "LLM endpoints", whisper: "Whisper", diarization: "Diarization", translation: "Translation",
+  subtitles: "Subtitles", filters: "Filters", audio: "Audio", arr: "Sonarr / Radarr", ui: "Web UI", general: "General", vad: "Voice activity detection",
+  music: "Music", engine: "Engine", server: "Server", guard: "Resource guard"};
+const inFile = k => config.file && Object.prototype.hasOwnProperty.call(config.file, k);
+const baseValue = r => resets.has(r.key) ? r.default : inFile(r.key) ? config.file[r.key] : r.value;
+const editorValue = r => r.key in draft ? draft[r.key] : baseValue(r);
+const canEdit = r => config.can_write && !r.secret && r.source !== "env";
+const fieldErr = k => saveErrors.filter(e => e.startsWith(k + ":") || e.startsWith(k + " "));
+function editor(r) {
+  const v = editorValue(r), id = "f_" + r.key, dis = canEdit(r) ? "" : " disabled";
+  if (r.secret) return `<span class="muted">${r.value ? "••••••••" : "(empty)"} · set in secrets.env</span>`;
+  if (r.type === "boolean") return `<input type="checkbox" id="${id}" data-k="${esc(r.key)}"${v ? " checked" : ""}${dis}>`;
+  if (r.enum) return `<select id="${id}" data-k="${esc(r.key)}"${dis}>${r.enum.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  if (r.type === "array") return `<textarea id="${id}" data-k="${esc(r.key)}" data-arr="1" rows="${Math.max(2, (v || []).length + 1)}"${dis}>${esc((v || []).join("\n"))}</textarea><div class="muted tiny">one per line</div>`;
+  if (r.type === "integer" || r.type === "number")
+    return `<input type="number" id="${id}" data-k="${esc(r.key)}" data-num="${r.type}" value="${esc(v)}"${r.min != null ? ` min="${r.min}"` : ""}${r.max != null ? ` max="${r.max}"` : ""}${r.type === "number" ? ' step="any"' : ""}${dis}>`;
+  return `<input type="text" id="${id}" data-k="${esc(r.key)}" value="${esc(v)}"${dis}>`;
+}
+function writeBanner(hint) {
+  return `<div class="card" style="margin:10px 0;border-color:var(--warn)"><b>Read-only.</b> ${esc(hint || "Editing is switched off.")}</div>`;
+}
+function configView() {
+  const c = config;
+  if (!c.enabled) return `<div class="card">The configuration layer is off (set up a config folder and the schemas).</div>`;
+  const q = filter.toLowerCase();
+  const rows = c.rows.filter(r => !q || (r.key + r.title + (r.description || "")).toLowerCase().includes(q));
+  const bySec = {};
+  rows.forEach(r => (bySec[r.section] = bySec[r.section] || []).push(r));
+  const errs = c.errors.length ? `<div class="card err" style="margin-bottom:10px">${c.errors.map(esc).join("<br>")}</div>` : "";
+  const comps = (c.components || []).map(n => `<option${n === component ? " selected" : ""}>${esc(n)}</option>`).join("");
+  const sections = Object.entries(bySec).map(([sec, rs]) => `<h3 class="sec">${esc(SECTIONS[sec] || sec)}</h3><div class="card"><table>
+    ${rs.map(r => {
+      const mod = r.key in draft || resets.has(r.key), fe = fieldErr(r.key);
+      const reset = canEdit(r) && ((inFile(r.key) && !resets.has(r.key)) || r.key in draft) ? `<button class="link" data-reset="${esc(r.key)}">reset to default</button>` : "";
+      return `<tr class="${fe.length ? "bad" : mod ? "changed" : ""}"><td style="width:34%"><b>${esc(r.title)}</b><br><span class="mono muted">${esc(r.key)}</span>${r.description ? `<div class="muted tiny">${esc(r.description)}</div>` : ""}</td>
+      <td>${editor(r)}${fe.map(e => `<div class="err tiny">${esc(e)}</div>`).join("")}${r.source === "env" ? `<div class="tiny" style="color:var(--warn)">Overridden by environment variable <span class="mono">${esc(r.env)}</span>; remove it from the compose file to edit here. Current value: ${val(r)}</div>` : ""}</td>
+      <td style="width:20%"><span class="chip ${resets.has(r.key) ? "" : r.source === "file" ? "src-file" : r.source === "env" ? "src-env" : ""}">${esc(resets.has(r.key) ? "default (after save)" : r.source)}</span>
+      ${mod ? '<span class="chip mod">modified</span>' : ""}${r.restart ? '<span class="chip">restart needed</span>' : ""}<div>${reset}</div></td></tr>`; }).join("")}</table></div>`).join("");
+  const note = c.can_write ? "" : writeBanner(c.write_hint);
+  return `${errs}<div class="tools"><label>Component <select id="comp">${comps}</select></label><input type="search" id="q" placeholder="Filter settings…" value="${esc(filter)}">
+    <span class="muted tiny">Source: <b>default</b> (schema), <b>file</b> (<span class="mono">${esc(c.dir)}</span>), <b>env</b> (an environment variable overrides the file). Secrets are managed in <span class="mono">secrets.env</span>.</span></div>${note}
+    ${sections || '<p class="muted">No matching settings.</p>'}`;
+}
+function readFields() {
+  document.querySelectorAll("#view [data-k]").forEach(el => {
+    const r = config.rows.find(x => x.key === el.dataset.k); if (!r || el.disabled) return;
+    let v;
+    if (el.type === "checkbox") v = el.checked;
+    else if (el.dataset.arr) v = el.value.split("\n").map(x => x.trim()).filter(Boolean);
+    else if (el.dataset.num) { v = el.value === "" ? "" : Number(el.value); if (v !== "" && el.dataset.num === "integer" && !Number.isInteger(v)) v = el.value; }
+    else v = el.value;
+    if (same(v, baseValue(r))) delete draft[r.key]; else { draft[r.key] = v; resets.delete(r.key); }
+  });
+}
+function bar() {
+  const b = $("#bar"), n = Object.keys(draft).length + resets.size;
+  if (tab !== "config" || (!n && !saveErrors.length && !notice)) { b.hidden = true; return; }
+  b.hidden = false;
+  b.innerHTML = `<div class="msg">${n ? `<b>${n} unsaved change${n > 1 ? "s" : ""}</b>` : ""}${saveErrors.length ? `<div class="err tiny">${saveErrors.map(esc).join("<br>")}</div>` : ""}${notice ? `<div class="ok tiny">${esc(notice)}</div>` : ""}</div>
+    <button id="discard"${n ? "" : " disabled"}>Discard</button><button class="pri" id="save"${n ? "" : " disabled"}>Save</button>`;
+  $("#discard").onclick = () => { draft = {}; resets = new Set(); saveErrors = []; notice = ""; render(); };
+  $("#save").onclick = save;
+}
+async function save() {
+  readFields();
+  const changes = {...draft}, remove = [...resets];
+  $("#save").disabled = true; saveErrors = []; notice = "";
+  try {
+    const r = await api("/ui/api/config/" + component, {changes, remove, etag: config.etag});
+    draft = {}; resets = new Set();
+    notice = "Saved and applied." + (r.restart.length ? " Needs a restart: " + r.restart.join(", ") + "." : "");
+    config = await api("/ui/api/config?component=" + component); history = null;
+  } catch (e) {
+    saveErrors = e.errors || [e.message];
+    if (e.status === 409) saveErrors = [e.message + " (use Discard to reload)"];
+  }
+  render();
+}
+// ---------------------------------------------------------------- history
+function histView() {
+  if (!history) return '<p class="muted">Loading…</p>';
+  const comps = ((config && config.components) || ["bridge", "npusubs", "settings"]).map(n => `<option${n === component ? " selected" : ""}>${esc(n)}</option>`).join("");
+  const stamp = t => `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)} ${t.slice(9, 11)}:${t.slice(11, 13)}:${t.slice(13, 15)}`;
+  const rows = history.items.map(h => `<tr><td class="mono">${stamp(h.time)}</td><td>${esc(h.author)}</td><td class="num">${h.size} B</td>
+    <td class="num"><button class="link" data-cmp="${esc(h.name)}">compare</button>${status && status.can_write ? `<button class="link" data-restore="${esc(h.name)}">restore</button>` : ""}</td></tr>`).join("");
+  let cmp = "";
+  if (compare) cmp = `<div class="card" style="margin-top:16px"><h2>Snapshot ${esc(compare.name)} compared with the current file</h2>` + (compare.diff.length ?
+    `<table><tr><th>Setting</th><th>In snapshot</th><th>Now</th></tr>${compare.diff.map(d => `<tr><td class="mono">${esc(d.key)}</td>
+      <td class="diff-old mono">${d.old_set ? esc(JSON.stringify(d.old)) : "<i>not set</i>"}</td><td class="diff-new mono">${d.new_set ? esc(JSON.stringify(d.new)) : "<i>not set</i>"}</td></tr>`).join("")}</table>` : `<p class="muted">Identical.</p>`) + `</div>`;
+  return `<div class="tools"><label>Component <select id="hcomp">${comps}</select></label><span class="muted tiny">Every save keeps the previous version here. Restoring first snapshots the current file, so nothing is lost.</span></div>
+    ${notice ? `<p class="ok">${esc(notice)}</p>` : ""}${saveErrors.length ? `<p class="err">${saveErrors.map(esc).join("<br>")}</p>` : ""}
+    <div class="card">${rows ? `<table><tr><th>When</th><th>By</th><th class="num">Size</th><th></th></tr>${rows}</table>` : '<p class="muted">No earlier versions yet.</p>'}</div>${cmp}`;
+}
+// ---------------------------------------------------------------- shared: state, override rows, delegated events
+const S = {jobView: null, profData: null, profEdit: null, profTest: {}, profErr: [], profNote: "",
+  play: {mode: "translate", list: null, run: null, canRun: false, limits: {lines: 300, audio_mb: 60}, err: [], busy: false, srt: "", lang: "", video: "", label: "",
+    tVariants: [{name: "Draft only", rows: [{comp: "bridge", key: "translation.bible", value: false}, {comp: "bridge", key: "translation.review", value: false}]},
+                {name: "Current settings", rows: []}],
+    sVariants: [{name: "Greedy", beam: "1", vad: "", diar: ""}, {name: "Beam 5", beam: "5", vad: "", diar: ""}]}};
+const getPath = p => p.split(".").reduce((o, k) => o[k], S);
+const setPath = (p, v) => { const a = p.split("."), last = a.pop(); a.reduce((o, k) => o[k], S)[last] = v; };
+const settingsOf = c => (S.profData && S.profData.settings[c]) || [];
+const defaultOf = l => l ? (l.default != null ? l.default : l.type === "boolean" ? false : l.type === "array" ? [] : "") : "";
+function valueInput(leaf, v, attrs) {
+  if (!leaf) return `<input type="text" ${attrs} value="${esc(v)}">`;
+  if (leaf.type === "boolean") return `<select ${attrs} data-kind="bool"><option value="true"${v === true ? " selected" : ""}>on</option><option value="false"${v === false ? " selected" : ""}>off</option></select>`;
+  if (leaf.enum) return `<select ${attrs}>${leaf.enum.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  if (leaf.type === "array") return `<textarea ${attrs} data-kind="arr" rows="2">${esc((v || []).join("\n"))}</textarea>`;
+  if (leaf.type === "integer" || leaf.type === "number") return `<input type="number" ${attrs} data-kind="num" value="${esc(v)}" step="${leaf.type === "number" ? "any" : "1"}"${leaf.min != null ? ` min="${leaf.min}"` : ""}${leaf.max != null ? ` max="${leaf.max}"` : ""}>`;
+  return `<input type="text" ${attrs} value="${esc(v)}">`;
+}
+function parseVal(el) {
+  const k = el.dataset.kind;
+  if (k === "bool") return el.value === "true";
+  if (k === "arr") return el.value.split("\n").map(x => x.trim()).filter(Boolean);
+  if (k === "num") return el.value === "" ? "" : Number(el.value);
+  return el.value;
+}
+function rowsEditor(path, rows, fixed) {
+  const comps = Object.keys((S.profData && S.profData.settings) || {});
+  return rows.map((r, i) => {
+    const list = settingsOf(r.comp), leaf = list.find(x => x.key === r.key), at = `data-rows="${path}" data-i="${i}"`;
+    return `<div class="orow">${fixed ? "" : `<select ${at} data-f="comp">${comps.map(c => `<option${c === r.comp ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>`}
+      <select ${at} data-f="key" style="min-width:260px">${list.map(s => `<option value="${esc(s.key)}"${s.key === r.key ? " selected" : ""}>${esc(s.key)} · ${esc(s.title)}</option>`).join("")}</select>
+      ${valueInput(leaf, r.value, `${at} data-f="value"`)}<button class="link" data-act="delrow" ${at}>remove</button></div>`; }).join("") +
+    `<button class="link" data-act="addrow" data-rows="${path}"${fixed ? ` data-fixed="${fixed}"` : ""}>+ add setting</button>`;
+}
+const rowsToFlat = rows => { const o = {}; rows.forEach(r => { if (r.value !== "") o[r.key] = r.value; }); return o; };
+async function onRowEvent(el, rerender) {
+  const rows = getPath(el.dataset.rows), r = rows[+el.dataset.i], f = el.dataset.f;
+  if (f === "value") { r.value = parseVal(el); return false; }
+  if (f === "comp") { r.comp = el.value; r.key = (settingsOf(r.comp)[0] || {}).key || ""; r.value = defaultOf(settingsOf(r.comp)[0]); }
+  if (f === "key") { r.key = el.value; r.value = defaultOf(settingsOf(r.comp).find(x => x.key === r.key)); }
+  return true;
+}
+function bindDelegated(v) {
+  v.oninput = e => { const el = e.target;
+    if (el.dataset.b) setPath(el.dataset.b, el.type === "checkbox" ? el.checked : el.value);
+    else if (el.dataset.rows && el.dataset.f === "value" && el.tagName !== "SELECT") onRowEvent(el); };
+  v.onchange = async e => { const el = e.target;
+    if (el.dataset.b) { setPath(el.dataset.b, el.type === "checkbox" ? el.checked : el.value); if (el.dataset.rerender) render(); }
+    else if (el.dataset.rows && await onRowEvent(el)) render(); };
+  v.onclick = e => { const el = e.target.closest("[data-act]"); if (el) actions[el.dataset.act](el); };
+}
+const actions = {
+  addrow(el) { const rows = getPath(el.dataset.rows), comp = el.dataset.fixed || (settingsOf("bridge").length ? "bridge" : Object.keys(S.profData.settings)[0]);
+    const l = settingsOf(comp)[0]; rows.push({comp, key: l ? l.key : "", value: defaultOf(l)}); render(); },
+  delrow(el) { getPath(el.dataset.rows).splice(+el.dataset.i, 1); render(); },
+  profnew() { S.profEdit = {isNew: true, file: "", description: "", match: {path_glob: "", source_language: "", target_language: ""}, rows: []}; S.profErr = []; render(); },
+  profedit(el) { const p = S.profData.profiles.find(x => x.file === el.dataset.file); const rows = [];
+    Object.entries(p.overrides).forEach(([comp, o]) => Object.entries(o).forEach(([key, value]) => rows.push({comp, key, value})));
+    S.profEdit = {isNew: false, file: p.file, description: p.description || "", match: {path_glob: "", source_language: "", target_language: "", ...p.match}, rows}; S.profErr = []; render(); },
+  profcancel() { S.profEdit = null; S.profErr = []; render(); },
+  async profsave() { const e = S.profEdit, match = {}, overrides = {};
+    Object.entries(e.match).forEach(([k, v]) => { if (String(v).trim()) match[k] = String(v).trim(); });
+    e.rows.forEach(r => { (overrides[r.comp] = overrides[r.comp] || {})[r.key] = r.value; });
+    try { await api("/ui/api/profiles/" + encodeURIComponent(e.file.trim()), {description: e.description, match, overrides});
+      S.profEdit = null; S.profErr = []; S.profNote = "Profile saved and applied."; S.profData = await api("/ui/api/profiles");
+    } catch (x) { S.profErr = x.errors || [x.message]; } render(); },
+  async profdel(el) { if (!confirm(`Delete profile ${el.dataset.file}? A copy stays in history/profiles/.`)) return;
+    try { await api(`/ui/api/profiles/${encodeURIComponent(el.dataset.file)}/delete`, {}); S.profNote = "Profile deleted."; S.profData = await api("/ui/api/profiles"); } catch (x) { S.profErr = [x.message]; } render(); },
+  async proftest() { const t = S.profTest || {}; const q = new URLSearchParams({path: t.path || "", source_language: t.src || "", target_language: t.dst || ""});
+    try { S.profTest = {...t, result: await api("/ui/api/profiles/match?" + q)}; } catch (x) { S.profTest = {...t, error: x.message}; } render(); },
+  addvar() { const p = S.play; if (p.mode === "translate") p.tVariants.push({name: "Variant " + (p.tVariants.length + 1), rows: []}); else p.sVariants.push({name: "Variant " + (p.sVariants.length + 1), beam: "5", vad: "", diar: ""}); render(); },
+  delvar(el) { const p = S.play; (p.mode === "translate" ? p.tVariants : p.sVariants).splice(+el.dataset.i, 1); render(); },
+  async openrun(el) { await openRun(el.dataset.id); },
+  async runplay() { const p = S.play; p.err = []; p.busy = true; render();
+    try {
+      let r;
+      if (p.mode === "translate") {
+        r = await api("/ui/api/playground/translate", {label: p.label || "Translation", srt: p.srt, language: p.lang, video_file: p.video,
+          variants: p.tVariants.map(v => ({name: v.name, overrides: rowsToFlat(v.rows)}))});
+      } else {
+        const f = $("#pfile") && $("#pfile").files[0]; if (!f) throw new Error("Choose an audio or video clip first.");
+        const fd = new FormData(); fd.append("file", f);
+        fd.append("meta", JSON.stringify({label: p.label || f.name, language: p.lang, variants: p.sVariants.map(v => ({name: v.name, params: {
+          beam_size: v.beam === "" ? null : Number(v.beam), vad_filter: v.vad === "" ? null : v.vad === "on", diarize: v.diar === "" ? null : v.diar === "on"}}))}));
+        const resp = await fetch("/ui/api/playground/transcribe", {method: "POST", credentials: "same-origin", headers: {"X-Requested-With": "ui"}, body: fd});
+        r = await resp.json(); if (!resp.ok) { const e = new Error(r.error || (r.errors || []).join("; ")); e.errors = r.errors; throw e; }
+      }
+      p.busy = false; await openRun(r.id);
+    } catch (x) { p.busy = false; p.err = x.errors || [x.message]; render(); } }
+};
+let pollTimer = null;
+async function openRun(id) {
+  clearTimeout(pollTimer);
+  try { S.play.run = await api("/ui/api/playground/" + id); S.play.list = (await api("/ui/api/playground")).runs; } catch (x) { S.play.err = [x.message]; }
+  const box = $("#runbox");
+  if (tab === "playground") { if (box && !document.querySelector('[data-act="runplay"]').disabled) box.innerHTML = runView(S.play.run) + prevRuns(); else render(); }
+  if (S.play.run && S.play.run.status === "running") pollTimer = setTimeout(() => openRun(id), 3000);
+}
+function profilesView() {
+  const d = S.profData;
+  if (!d) return '<p class="muted">Loading…</p>';
+  if (!d.enabled) return '<div class="card">The configuration layer is off.</div>';
+  const errs = S.profErr.length ? `<div class="card err" style="margin-bottom:10px">${S.profErr.map(esc).join("<br>")}</div>` : "";
+  const note = S.profNote ? `<p class="ok">${esc(S.profNote)}</p>` : "";
+  const can = d.can_write;
+  if (S.profEdit) { const e = S.profEdit, bind = k => `data-b="profEdit.match.${k}"`;
+    return `${errs}<div class="card"><h2>${e.isNew ? "New profile" : "Edit " + esc(e.file)}</h2><div class="form">
+      <div><label>File name (profiles are tried in name order, first match wins: start with 10-, 20-, … to order them)</label><input type="text" data-b="profEdit.file" value="${esc(e.file)}"${e.isNew ? "" : " disabled"} placeholder="20-anime-ja"></div>
+      <div><label>Description</label><input type="text" data-b="profEdit.description" value="${esc(e.description)}"></div>
+      <div><label>Applies to files whose path matches (wildcards, for example */Anime/*)</label><input type="text" ${bind("path_glob")} value="${esc(e.match.path_glob)}"></div>
+      <div class="cols"><div><label>Spoken language (code, for example ja)</label><input type="text" ${bind("source_language")} value="${esc(e.match.source_language)}"></div>
+        <div><label>Target language (code, for example en)</label><input type="text" ${bind("target_language")} value="${esc(e.match.target_language)}"></div></div>
+      <div><label>Settings this profile changes</label>${rowsEditor("profEdit.rows", e.rows)}</div>
+      <div><button class="pri" data-act="profsave">Save profile</button> <button data-act="profcancel">Cancel</button></div></div></div>`; }
+  const cards = d.profiles.map(p => {
+    const rows = Object.entries(p.overrides).flatMap(([c, o]) => Object.entries(o).map(([k, v]) => { const l = settingsOf(c).find(x => x.key === k);
+      return `<tr><td class="mono">${esc(c)}.${esc(k)}</td><td class="muted tiny">${esc(l ? l.title : "")}</td><td class="mono">${esc(JSON.stringify(v))}</td></tr>`; })).join("");
+    return `<div class="card" style="margin-bottom:12px"><div class="tools"><b>${esc(p.file)}</b>${p.description ? `<span class="muted">${esc(p.description)}</span>` : ""}<span class="sp"></span>
+      ${can ? `<button data-act="profedit" data-file="${esc(p.file)}">Edit</button><button data-act="profdel" data-file="${esc(p.file)}">Delete</button>` : ""}</div>
+      <div>${Object.entries(p.match).map(([k, v]) => `<span class="chip acc">${esc(k)}: ${esc(v)}</span>`).join("") || '<span class="chip">matches everything</span>'}</div>
+      <table>${rows || '<tr><td class="muted">no overrides</td></tr>'}</table></div>`; }).join("");
+  const t = S.profTest || {}, res = t.result;
+  const tester = `<div class="card" style="margin-top:16px"><h2>Which profile applies to a file?</h2><div class="cols">
+    <input type="text" data-b="profTest.path" placeholder="/media/Anime/Show/S01E01.mkv" value="${esc(t.path)}">
+    <input type="text" data-b="profTest.src" placeholder="spoken language, ja" value="${esc(t.src)}"><input type="text" data-b="profTest.dst" placeholder="target language, en" value="${esc(t.dst)}"></div>
+    <p><button data-act="proftest">Check</button> ${t.error ? `<span class="err">${esc(t.error)}</span>` : res ? (res.match ? `→ <b>${esc(res.match.file)}</b>` : "→ no profile matches, the base settings apply") : ""}</p></div>`;
+  return `${errs}${note}<div class="tools"><span class="muted tiny">A profile changes settings for the files it matches. Bridge settings apply per job; of npusubs the beam, <span class="mono">vad.enabled</span>, <span class="mono">diarization.default</span> and <span class="mono">subtitles.*</span> apply per request, the other npusubs settings stay global.
+    Jobs with different profiles do not run at the same time.</span><span class="sp"></span>${can ? '<button class="pri" data-act="profnew">New profile</button>' : ""}</div>
+    ${cards || '<div class="card"><p class="muted">No profiles yet.</p></div>'}${tester}${can ? "" : writeBanner(d.write_hint)}`;
+}
+function playgroundView() {
+  const p = S.play, d = S.profData;
+  if (!d || !p.list) return '<p class="muted">Loading…</p>';
+  const tr = p.mode === "translate";
+  const banner = p.canRun ? "" : writeBanner(p.hint);
+  const variants = tr ? p.tVariants.map((v, i) => `<div class="card"><div class="tools"><input type="text" data-b="play.tVariants.${i}.name" value="${esc(v.name)}" style="max-width:240px">
+      ${p.tVariants.length > 1 ? `<button class="link" data-act="delvar" data-i="${i}">remove variant</button>` : ""}</div>
+      <div class="muted tiny">Bridge settings that differ from the current configuration (none = current settings).</div>${rowsEditor(`play.tVariants.${i}.rows`, v.rows, "bridge")}</div>`).join("")
+    : p.sVariants.map((v, i) => {
+      const sel = (k, opts) => `<select data-b="play.sVariants.${i}.${k}">${opts.map(([val, lab]) => `<option value="${val}"${v[k] === val ? " selected" : ""}>${lab}</option>`).join("")}</select>`;
+      return `<div class="card"><div class="tools"><input type="text" data-b="play.sVariants.${i}.name" value="${esc(v.name)}" style="max-width:240px">
+        ${p.sVariants.length > 1 ? `<button class="link" data-act="delvar" data-i="${i}">remove variant</button>` : ""}</div>
+        <div class="orow"><label>Beam <input type="number" min="1" max="10" data-b="play.sVariants.${i}.beam" value="${esc(v.beam)}"></label>
+        <label>VAD ${sel("vad", [["", "current"], ["on", "on"], ["off", "off"]])}</label><label>Speakers ${sel("diar", [["", "current"], ["on", "on"], ["off", "off"]])}</label></div></div>`; }).join("");
+  const input = tr ? `<div><label>Subtitles to translate (paste an SRT, at most ${p.limits.lines} cues)</label><textarea data-b="play.srt" rows="8" placeholder="1&#10;00:00:01,000 --> 00:00:03,000&#10;...">${esc(p.srt)}</textarea></div>
+      <div class="cols"><div><label>Spoken language (code)</label><input type="text" data-b="play.lang" value="${esc(p.lang)}" placeholder="ja"></div>
+      <div><label>Video path (optional, gives Sonarr/Radarr context)</label><input type="text" data-b="play.video" value="${esc(p.video)}"></div></div>`
+    : `<div><label>Audio or video clip (a few minutes, at most ${p.limits.audio_mb} MB)</label><input type="file" id="pfile"></div>
+      <div><label>Spoken language (code, empty = detect)</label><input type="text" data-b="play.lang" value="${esc(p.lang)}" placeholder="ja" style="max-width:160px"></div>`;
+  return `${banner}<div class="card"><div class="tools"><label>Compare <select data-b="play.mode" data-rerender="1"><option value="translate"${tr ? " selected" : ""}>translation settings</option><option value="transcribe"${tr ? "" : " selected"}>transcription settings (beam, VAD, speakers)</option></select></label>
+    <input type="text" data-b="play.label" value="${esc(p.label)}" placeholder="label (optional)" style="max-width:240px"><span class="sp"></span>
+    <span class="muted tiny">${tr ? "Runs through the translation LLM; takes the settings gate, so it waits for running jobs." : "Runs on the first reachable speech service one variant after another."}</span></div>
+    <div class="form" style="max-width:none">${input}</div></div>
+    <div class="cols" style="margin-top:12px">${variants}</div>
+    <p>${p.err.length ? `<span class="err">${p.err.map(esc).join("<br>")}</span><br>` : ""}<button class="pri" data-act="runplay"${p.busy || !p.canRun ? " disabled" : ""}>${p.busy ? "Starting…" : "Run comparison"}</button>
+      <button data-act="addvar"${(tr ? p.tVariants : p.sVariants).length >= 4 ? " disabled" : ""}>Add variant</button></p>
+    <div id="runbox">${runView(p.run)}${prevRuns()}</div>`;
+}
+function prevRuns() {
+  const l = S.play.list || [];
+  return l.length ? `<div class="card" style="margin-top:16px"><h2>Earlier runs</h2>${l.map(r => `<div class="row"><div class="grow"><button class="link" data-act="openrun" data-id="${esc(r.id)}">${esc(r.label)}</button>
+    <span class="muted tiny">${esc(r.kind)} · ${esc(r.status)} · ${ago(Math.round(Date.now() / 1000 - r.started))}</span></div></div>`).join("")}</div>` : "";
+}
+function runView(run) {
+  if (!run) return "";
+  const head = `<div class="tools"><b>${esc(run.label)}</b><span class="chip ${run.status === "done" ? "on" : run.status === "error" ? "bad" : "acc"}">${esc(run.status)}</span>
+    ${run.results.map(r => `<span class="muted tiny">${esc(r.name)}: ${r.seconds != null ? dur(r.seconds) : "running…"}</span>`).join(" · ")}</div>${run.error ? `<p class="err">${esc(run.error)}</p>` : ""}`;
+  if (run.kind === "translate") {
+    const src = (run.source && run.source.lines) || [], res = run.results;
+    const body = src.map((s, i) => { const base = res[0] && res[0].lines[i];
+      return `<tr><td class="num muted tiny">${i + 1}</td><td>${esc(s)}</td>${res.map((r, j) => `<td class="${j && r.lines[i] !== undefined && base !== undefined && r.lines[i] !== base ? "diff" : ""}">${r.status === "error" ? "" : esc(r.lines[i] ?? "")}</td>`).join("")}</tr>`; }).join("");
+    return `<div class="card" style="margin-top:16px">${head}<table><tr><th>#</th><th>Source</th>${res.map(r => `<th>${esc(r.name)}${r.status === "error" ? ` <span class="err tiny">${esc(r.error)}</span>` : ""}</th>`).join("")}</tr>${body}</table>
+      <p class="muted tiny">Highlighted: lines that differ from the first variant.</p></div>`;
+  }
+  return `<div class="card" style="margin-top:16px">${head}<div class="cols">${run.results.map(r => `<div><b>${esc(r.name)}</b> <span class="muted tiny">${(r.srt.match(/-->/g) || []).length} cues</span>
+    ${r.error ? `<div class="err tiny">${esc(r.error)}</div>` : ""}<pre>${esc(r.srt)}</pre></div>`).join("")}</div></div>`;
+}
+Object.assign(actions, {
+  async openjob(el) { try { S.jobView = await api("/ui/api/jobs/" + el.dataset.id); } catch (x) { alert(x.message); } render(); },
+  closejob() { S.jobView = null; render(); }
+});
+function render() {
+  document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.dataset.t === tab));
+  const v = $("#view");
+  try {
+    if (tab === "config") {
+      if (!config) { v.innerHTML = '<p class="muted">Loading…</p>'; bar(); return; }
+      const f = document.activeElement && document.activeElement.id === "q"; v.innerHTML = configView();
+      const q = $("#q"); if (q) { q.oninput = e => { readFields(); filter = e.target.value; render(); }; if (f) { q.focus(); q.setSelectionRange(filter.length, filter.length); } }
+      const cs = $("#comp"); if (cs) cs.onchange = e => { if (Object.keys(draft).length + resets.size && !confirm("Discard unsaved changes?")) { e.target.value = component; return; }
+        component = e.target.value; draft = {}; resets = new Set(); saveErrors = []; notice = ""; config = null; history = null; load(); };
+      v.querySelectorAll("[data-k]").forEach(el => el.onchange = () => { readFields(); notice = ""; saveErrors = []; render(); });
+      v.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => { readFields(); const k = b.dataset.reset; delete draft[k]; resets.add(k); render(); });
+    } else if (tab === "profiles" || tab === "playground") {
+      v.innerHTML = tab === "profiles" ? profilesView() : playgroundView(); bindDelegated(v);
+    } else if (tab === "history") {
+      v.innerHTML = histView();
+      const hs = $("#hcomp"); if (hs) hs.onchange = e => { component = e.target.value; history = null; compare = null; config = null; notice = ""; saveErrors = []; load(); };
+      v.querySelectorAll("[data-cmp]").forEach(b => b.onclick = async () => { try { compare = {name: b.dataset.cmp, ...(await api(`/ui/api/history/${component}/${b.dataset.cmp}`))}; } catch (e) { saveErrors = [e.message]; } render(); });
+      v.querySelectorAll("[data-restore]").forEach(b => b.onclick = async () => {
+        if (!confirm("Restore " + b.dataset.restore + "? The current file is snapshotted first.")) return;
+        try { await api(`/ui/api/history/${component}/${b.dataset.restore}/restore`, {}); notice = "Restored and applied."; saveErrors = []; compare = null; history = null; config = null; await load(); }
+        catch (e) { saveErrors = e.errors || [e.message]; render(); } });
+    } else if (!status) v.innerHTML = '<p class="muted">Loading…</p>';
+    else { v.innerHTML = tab === "backends" ? backends() : S.jobView ? jobView() : dashboard(); bindDelegated(v); }
+  } catch (e) { v.innerHTML = `<div class="card err">UI error: ${esc(e.message)}</div>`; }
+  bar();
+}
+async function load() {
+  try {
+    if (tab === "config") { if (!config || !Object.keys(draft).length) config = await api("/ui/api/config?component=" + component); }
+    else if (tab === "history") { history = await api("/ui/api/history/" + component); if (!status) status = await api("/ui/api/status"); }
+    else if (tab === "profiles" || tab === "playground") {
+      S.profData = await api("/ui/api/profiles");
+      if (tab === "playground") { const l = await api("/ui/api/playground"); S.play.list = l.runs; S.play.canRun = l.can_run; S.play.hint = l.write_hint; S.play.limits = l.limits;
+        if (!S.play.run && l.runs.length) await openRun(l.runs[0].id); }
+    }
+    else status = await api("/ui/api/status");
+    $("#chip").textContent = "updated " + new Date().toLocaleTimeString();
+    render();
+  } catch (e) { $("#view").innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+document.querySelectorAll("#nav a").forEach(a => a.onclick = () => { if (tab === "config") readFields(); tab = a.dataset.t; location.hash = tab; S.jobView = null; notice = ""; saveErrors = []; if (tab !== "history") compare = null; render(); load(); });
+load(); setInterval(() => { if ((tab === "dashboard" || tab === "backends") && !document.hidden && !S.jobView) load(); }, 5000);
+</script>
+</body>
+</html>

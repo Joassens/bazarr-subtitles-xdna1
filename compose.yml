@@ -1,0 +1,49 @@
+# The NPU shows up as /dev/accel/accel0, group `render`:
+#   RENDER_GID=$(getent group render | cut -d: -f3) docker compose up -d
+#
+# XRT locks its device buffers, so the container needs IPC_LOCK and an unbounded memlock.
+#
+# Settings live in ./config/npusubs.json (see config.example/); the variables below are optional overrides and
+# win over the file when they are set to a non-empty value. Leave them empty to manage everything from the file.
+services:
+  npusubs:
+    build:
+      context: .
+      args:
+        BASE: ${NPU_WHISPER_IMAGE:-npu-whisper:latest}
+    image: npusubs:latest
+    container_name: npusubs
+    devices:
+      - /dev/accel/accel0
+      - /dev/dri
+    group_add:
+      - "${RENDER_GID:-992}"
+    cap_add:
+      - IPC_LOCK
+    ulimits:
+      memlock: -1
+    ports:
+      # 127.0.0.1 only by default: there is no authentication. Set NPUSUBS_BIND=0.0.0.0 (or a LAN IP) to expose it.
+      - "${NPUSUBS_BIND:-127.0.0.1}:${NPUSUBS_PORT:-9091}:9091"
+    environment:
+      HF_TOKEN: "${HF_TOKEN:-}"          # or put HF_TOKEN=... in config/secrets.env
+      NPUSUBS_MODEL: "${NPUSUBS_MODEL:-}"
+      NPUSUBS_THREADS: "${NPUSUBS_THREADS:-}"
+      NPUSUBS_BEAM: "${NPUSUBS_BEAM:-}"
+      NPUSUBS_QUEUE_WAIT: "${NPUSUBS_QUEUE_WAIT:-}"
+      NPUSUBS_VAD: "${NPUSUBS_VAD:-}"
+      NPUSUBS_MUSIC: "${NPUSUBS_MUSIC:-}"
+      NPUSUBS_DIARIZE: "${NPUSUBS_DIARIZE:-}"
+      NPUSUBS_DIARIZE_PARALLEL: "${NPUSUBS_DIARIZE_PARALLEL:-}"
+      NPUSUBS_SPEAKER_STYLE: "${NPUSUBS_SPEAKER_STYLE:-}"
+    volumes:
+      - ${NPUSUBS_CONFIG_DIR:-./config}:/config:ro   # settings, schemas, secrets.env (read-only for the service)
+      - aot:/opt/npu-whisper/aot            # compiled NPU overlays (minutes to build, so keep them)
+      - whisper:/root/.cache/whisper        # Whisper checkpoint (~1.6 GB)
+      - hf:/root/.cache/huggingface         # pyannote models
+    restart: unless-stopped
+
+volumes:
+  aot:
+  whisper:
+  hf:

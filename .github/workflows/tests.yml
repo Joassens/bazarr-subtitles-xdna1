@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The unit tests need no NPU, no model and no torch: only numpy and the bridge UI's web stack.
+      - run: pip install numpy fastapi httpx python-multipart
+      - run: python -m unittest discover -s tests -v
+      - name: Config schemas are up to date
+        run: |
+          python subcfg/gen_schemas.py config.example/schemas
+          git diff --exit-code config.example/schemas

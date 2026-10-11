@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "npusubs"
+version = "0.1.0"
+description = "Subtitle-grade Whisper on the AMD XDNA1 NPU, speaking the whisper-asr-webservice API"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "fastapi",
+  "uvicorn",
+  "python-multipart",
+  "openai-whisper",
+  "silero-vad",
+]
+
+[project.optional-dependencies]
+diarize = ["pyannote.audio>=4"]
+
+[tool.setuptools.packages.find]
+include = ["npusubs*"]
