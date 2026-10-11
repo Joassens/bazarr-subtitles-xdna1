@@ -110,7 +110,7 @@ last good configuration stays active). The environment variables below still wor
 | `NPUSUBS_MODEL` | `large-v3-turbo` | `large-v3` also works |
 | `NPUSUBS_THREADS` | `8` | CPU threads for the decoder |
 | `NPUSUBS_BEAM` | `5` | beam search width. `1` = greedy: ~4-5x faster, a little less accurate |
-| `NPUSUBS_DIARIZE_PARALLEL` | `0` | `1` overlaps diarization with transcription (faster, higher peak memory) |
+| `NPUSUBS_DIARIZE_PARALLEL` | `0` | `1` runs the diarization of a request in parallel with its own transcription (faster, higher peak memory) |
 | `NPUSUBS_VAD` | `1` | skip silence |
 | `NPUSUBS_MUSIC` | `1` | keep and transcribe sustained loud non-speech (songs) |
 | `NPUSUBS_DIARIZE` | `0` | default for `diarize=` (needs the setup below) |
@@ -139,8 +139,7 @@ WeSpeaker and pyannote).
 
 Uses [pyannote.audio](https://github.com/pyannote/pyannote-audio). You need a Hugging Face token and to accept
 the terms of the gated model once: <https://huggingface.co/pyannote/speaker-diarization-community-1>.
-Then set `HF_TOKEN` and `NPUSUBS_DIARIZE=1` (or send `diarize=true` per request). It runs on the CPU and
-overlaps with the NPU working on the next request. **Never commit your token.**
+Then set `HF_TOKEN` and `NPUSUBS_DIARIZE=1` (or send `diarize=true` per request). It runs on the CPU, after the transcription of the same request. **Never commit your token.**
 
 ## Measured (Ryzen 7 8845HS, 16 threads, large-v3-turbo)
 
@@ -162,7 +161,9 @@ overlaps with the NPU working on the next request. **Never commit your token.**
 ## Limitations
 
 * Only the encoder is on the NPU (bf16); the decoder is the stock PyTorch CPU decoder.
-* One transcription at a time on the NPU (a lock); further requests queue.
+* **One request at a time**, start to finish (decoding, NPU, CPU decoder, speaker diarization): the others wait in line, first
+  come first served (`max_concurrent_jobs`, default 1; `/health` shows `jobs.running` and `jobs.queued`). Two at once slowed each
+  other down by more than 10x in a test and can run a small container out of memory.
 * No vocal separation yet (see roadmap). Dialogue over loud music can still degrade.
 * Models and results depend on the upstream whisper-xdna kernels; large changes there may need an update here.
 
