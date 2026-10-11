@@ -6,7 +6,7 @@
 - **Shared configuration**: settings live in JSON files with schemas (`config.example/`), hot reloaded, invalid files
   keep the last good configuration, secrets in `secrets.env`, environment variables still override. Used by npusubs
   and the bridge.
-- **Web UI** at `/ui`: dashboard, backends, configuration editor with validation and conflict detection, history with
+- **Web UI** at `/ui` (user name and password chosen on first use; optional API token for scripts): dashboard, backends, configuration editor with validation and conflict detection, history with
   compare and restore, profiles applied per job, A/B playground (translation and transcription), request detail
   (source, draft, reviewed text, reasons, SRT download), resource guard (allowed hours, host RAM).
 - **Profiles**: `config/profiles/*.json` match on path and languages; the bridge and npusubs apply them per request.

@@ -7,7 +7,7 @@ better reviewer model is chosen). M1: shared config library `subcfg`, schemas, n
 `config/*.json` (environment variables still override). M2: dashboard, backends and configuration view. M3: editing with
 schema validation, hot reload, conflict detection, history and rollback, all served by the bridge at `/ui` on its
 existing lightweight web server (FastAPI/uvicorn), not as a separate container; the config folder is mounted read-write
-into the bridge and writing needs `ui.token`. Everything from M6 on (packaging, publishing) is still open.
+into the bridge and the UI is protected by a user name and password chosen on first use. Everything from M6 on (packaging, publishing) is still open.
 
 ## Goal
 
@@ -170,5 +170,6 @@ terminate an unrelated virtual machine. The UI and the tools therefore get a sma
 3. **Lingarr prompt and Bazarr provider settings:** not managed. The Lingarr refiner (a separate script) stays outside
    until a better reviewer model is chosen.
 4. **UI language:** English only.
-5. **Auth:** a shared token (`ui.token`) in a cookie or `X-Token` header, writes need it plus a CSRF header. No login
-   page; keep the bridge on a trusted LAN.
+5. **Auth:** a user name and password chosen on first use from the local network (default user `admin`, salted scrypt hash in
+   `config/auth.json`, signed session cookies, login throttling, CSRF header on writes). An optional API token (`ui.token`,
+   `X-Token` header) is for scripts only. No TLS: use a reverse proxy for that.

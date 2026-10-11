@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "subcfg"))
@@ -46,17 +47,12 @@ class UiTest(unittest.TestCase):
         self.assertEqual(TestClient(self.c.app).get("/ui/api/config?component=comp").status_code, 401)
         self.assertEqual(self.c.get("/ui/api/config?component=comp").status_code, 200)
 
-    def test_stale_cookie_does_not_beat_a_valid_query_token(self):
-        c = TestClient(self.c.app, cookies={"subtitle_ui": "old-token"})
-        self.assertEqual(c.get("/ui/api/config?component=comp&token=tok").status_code, 200)
-        self.assertEqual(c.get("/ui/api/config?component=comp&token=wrong").status_code, 401)
-
     def test_write_needs_csrf_header_and_token(self):
         r = self.c.post("/ui/api/config/comp", json={"changes": {"beam": 3}})
         self.assertEqual(r.status_code, 403)
-        self.state["token"] = ""
+        self.state["token"] = ""                                   # the API token is switched off: the header no longer counts
         r = self.c.post("/ui/api/config/comp", json={"changes": {"beam": 3}}, headers=H)
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 401)
 
     def test_save_validate_conflict_history_restore(self):
         j = self.c.get("/ui/api/config?component=comp").json()
@@ -179,12 +175,13 @@ class UiTest(unittest.TestCase):
 
     def test_write_hint_explains_why_editing_is_off(self):
         self.assertIsNone(self.c.get("/ui/api/config?component=comp").json()["write_hint"])
-        self.state["token"] = ""
-        hint = self.c.get("/ui/api/config?component=comp").json()["write_hint"]
-        self.assertIn("init-token", hint)
-        self.state["token"] = "tok"
+        with mock.patch("bridge_ui.os.access", return_value=False):
+            j = self.c.get("/ui/api/config?component=comp").json()
+            self.assertFalse(j["can_write"])
+            self.assertIn("read-only", j["write_hint"])
+            self.assertEqual(self.c.post("/ui/api/config/comp", json={"changes": {"beam": 3}}, headers=H).status_code, 403)
         self.state["cfg"] = None
-        self.assertEqual(self.c.get("/ui/api/profiles").json(), {"enabled": False})
+        self.assertEqual(self.c.get("/ui/api/profiles").status_code, 503)
 
     def test_unknown_component_and_path_tricks(self):
         self.assertEqual(self.c.get("/ui/api/config?component=nope").status_code, 404)
@@ -200,3 +197,176 @@ class UiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _auth_app(directory, token=""):
+    store = subcfg.ConfigStore("comp", directory, env={}, min_interval=0)
+    state = {"enabled": True, "token": token, "cfg": store}
+    app = FastAPI()
+    bridge_ui.install(app, lambda: state)
+    return app, state
+
+
+@unittest.skipUnless(HAVE, "fastapi not installed")
+class AuthTest(unittest.TestCase):
+    PW = "correct horse battery"
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.d, "schemas"))
+        with open(os.path.join(self.d, "schemas", "comp.schema.json"), "w") as f:
+            json.dump(SCHEMA, f)
+        bridge_ui._throttle = bridge_ui.ui_auth.Throttle()
+        bridge_ui._auth_stores.clear()
+        self.app, self.state = _auth_app(self.d)
+        self.c = TestClient(self.app, client=("192.168.1.20", 50000), follow_redirects=False)
+
+    def setup_ok(self, client=None):
+        return (client or self.c).post("/ui/api/setup", json={"username": "admin", "password": self.PW, "confirm": self.PW}, headers=H)
+
+    def test_first_visit_goes_to_setup_and_nothing_else_is_reachable(self):
+        r = self.c.get("/ui")
+        self.assertEqual((r.status_code, r.headers["location"]), (303, "/ui/setup"))
+        self.assertEqual(self.c.get("/ui/login").headers["location"], "/ui/setup")
+        r = self.c.get("/ui/api/status")
+        self.assertEqual((r.status_code, r.json()["login"]), (401, "/ui/setup"))
+        page = self.c.get("/ui/setup")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('data-mode="setup"', page.text)
+
+    def test_setup_is_refused_from_the_internet_and_without_the_csrf_header(self):
+        out = TestClient(self.app, client=("8.8.8.8", 4000), follow_redirects=False)
+        self.assertEqual(out.get("/ui/setup").status_code, 403)
+        self.assertEqual(self.setup_ok(out).status_code, 403)
+        r = self.c.post("/ui/api/setup", json={"username": "admin", "password": self.PW, "confirm": self.PW})
+        self.assertEqual(r.status_code, 403)
+
+    def test_a_lan_on_a_public_looking_range_can_be_trusted_explicitly(self):
+        lan = TestClient(self.app, client=("172.57.56.240", 4000), follow_redirects=False)
+        refused = lan.get("/ui/setup")
+        self.assertEqual(refused.status_code, 403)
+        self.assertIn("trusted_networks", refused.text)                    # it says how to fix it
+        self.state["trusted_networks"] = ["172.57.56.0/24"]
+        self.assertEqual(lan.get("/ui/setup").status_code, 200)
+        self.assertEqual(self.setup_ok(lan).status_code, 200)
+
+    def test_setup_enforces_a_decent_password(self):
+        for pw, confirm in (("short", "short"), ("password", "password"), ("admin", "admin"), ("aaaaaaaaaa", "aaaaaaaaaa"),
+                            (self.PW, "something else entirely")):
+            r = self.c.post("/ui/api/setup", json={"username": "admin", "password": pw, "confirm": confirm}, headers=H)
+            self.assertEqual(r.status_code, 422, pw)
+        r = self.c.post("/ui/api/setup", json={"username": "bad name!", "password": self.PW, "confirm": self.PW}, headers=H)
+        self.assertEqual(r.status_code, 422)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "auth.json")))
+
+    def test_setup_signs_you_in_and_only_works_once(self):
+        r = self.setup_ok()
+        self.assertEqual(r.status_code, 200, r.text)
+        cookie = r.headers["set-cookie"].lower()
+        self.assertIn("httponly", cookie)
+        self.assertIn("samesite=strict", cookie)
+        self.assertEqual(self.c.get("/ui").status_code, 200)
+        self.assertEqual(self.c.get("/ui/api/me").json()["user"], "admin")
+        self.assertEqual(self.setup_ok().status_code, 409)
+        stored = open(os.path.join(self.d, "auth.json")).read()
+        self.assertNotIn(self.PW, stored)                                  # only a salted hash is stored
+        self.assertIn("scrypt$", stored)
+        if os.name == "posix":
+            self.assertEqual(os.stat(os.path.join(self.d, "auth.json")).st_mode & 0o777, 0o600)
+
+    def test_login_logout_and_wrong_password(self):
+        self.setup_ok()
+        other = TestClient(self.app, client=("192.168.1.30", 1), follow_redirects=False)
+        self.assertEqual(other.get("/ui").headers["location"], "/ui/login")
+        bad = other.post("/ui/api/login", json={"username": "admin", "password": "nope-nope"}, headers=H)
+        self.assertEqual(bad.status_code, 401)
+        self.assertEqual(other.post("/ui/api/login", json={"username": "admin", "password": self.PW}).status_code, 403)   # no CSRF header
+        ok = other.post("/ui/api/login", json={"username": "admin", "password": self.PW}, headers=H)
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(other.get("/ui").status_code, 200)
+        self.assertEqual(other.post("/ui/api/logout", headers=H).status_code, 200)
+        self.assertEqual(other.get("/ui/api/status").status_code, 401)
+
+    def test_login_is_slowed_down_after_repeated_failures(self):
+        self.setup_ok()
+        other = TestClient(self.app, client=("192.168.1.31", 1), follow_redirects=False)
+        codes = [other.post("/ui/api/login", json={"username": "admin", "password": f"wrong-{i}"}, headers=H).status_code for i in range(7)]
+        self.assertEqual(codes[:5], [401] * 5)
+        self.assertEqual(codes[5:], [429, 429])
+        self.assertEqual(other.post("/ui/api/login", json={"username": "admin", "password": self.PW}, headers=H).status_code, 429)
+
+    def test_a_forged_or_expired_session_is_not_accepted(self):
+        self.setup_ok()
+        auth = bridge_ui._auth_store(self.state)
+        good = auth.new_session()
+        other = TestClient(self.app, client=("192.168.1.32", 1), follow_redirects=False)
+        other.cookies.set(bridge_ui.COOKIE, good[:-1] + ("0" if good[-1] != "0" else "1"))
+        self.assertEqual(other.get("/ui/api/status").status_code, 401)
+        with mock.patch("ui_auth.time.time", return_value=time.time() + 15 * 86400):
+            self.assertIsNone(auth.session_user(good))
+
+    def test_change_password_signs_the_other_sessions_out(self):
+        self.setup_ok()
+        old_cookie = self.c.cookies.get(bridge_ui.COOKIE)
+        r = self.c.post("/ui/api/password", json={"current": "wrong", "new": "another long phrase", "confirm": "another long phrase"}, headers=H)
+        self.assertEqual(r.status_code, 422)
+        r = self.c.post("/ui/api/password", json={"current": self.PW, "new": "short", "confirm": "short"}, headers=H)
+        self.assertEqual(r.status_code, 422)
+        r = self.c.post("/ui/api/password", json={"current": self.PW, "new": "another long phrase", "confirm": "another long phrase"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.c.get("/ui/api/me").status_code, 200)                       # this browser got a fresh session
+        stale = TestClient(self.app, client=("192.168.1.33", 1), follow_redirects=False)
+        stale.cookies.set(bridge_ui.COOKIE, old_cookie)
+        self.assertEqual(stale.get("/ui/api/me").status_code, 401)
+        login = stale.post("/ui/api/login", json={"username": "admin", "password": "another long phrase"}, headers=H)
+        self.assertEqual(login.status_code, 200)
+
+    def test_api_token_header_still_works_for_scripts_but_cannot_change_the_password(self):
+        app, state = _auth_app(self.d, token="scripttoken")
+        c = TestClient(app, client=("192.168.1.40", 1), follow_redirects=False)
+        self.assertEqual(c.get("/ui/api/config?component=comp").status_code, 401)
+        c.headers.update({"X-Token": "scripttoken"})
+        self.assertEqual(c.get("/ui/api/config?component=comp").status_code, 200)
+        self.assertEqual(c.post("/ui/api/config/comp", json={"changes": {"beam": 4}}, headers=H).status_code, 200)
+        self.assertEqual(c.post("/ui/api/password", json={"current": "x", "new": "y", "confirm": "y"}, headers=H).status_code, 403)
+        self.assertEqual(c.get("/ui/api/me").json()["via"], "token")
+
+    def test_readonly_folder_cannot_store_a_password(self):
+        with mock.patch("ui_auth.os.access", return_value=False):
+            page = self.c.get("/ui/setup")
+            self.assertIn('data-mode="readonly"', page.text)
+            self.assertEqual(self.setup_ok().status_code, 403)
+
+    def test_without_a_config_folder_the_ui_says_so(self):
+        self.state["cfg"] = None
+        self.assertEqual(self.c.get("/ui").status_code, 503)
+
+
+class UiAuthUnitTest(unittest.TestCase):
+    def test_hash_is_salted_and_verifies(self):
+        import ui_auth
+        a, b = ui_auth.hash_password("one two three four"), ui_auth.hash_password("one two three four")
+        self.assertNotEqual(a, b)
+        self.assertTrue(ui_auth.check_hash("one two three four", a))
+        self.assertFalse(ui_auth.check_hash("one two three five", a))
+        self.assertFalse(ui_auth.check_hash("x", "garbage"))
+
+    def test_local_addresses(self):
+        import ui_auth
+        for ok in ("192.168.1.5", "10.0.0.2", "172.16.4.4", "127.0.0.1", "::1", "::ffff:192.168.1.5", "fe80::1", "100.64.3.2"):
+            self.assertTrue(ui_auth.is_local_address(ok), ok)
+        for bad in ("8.8.8.8", "1.1.1.1", "2001:4860:4860::8888", "", None, "testclient", "172.57.56.240"):
+            self.assertFalse(ui_auth.is_local_address(bad), bad)
+
+    def test_trusted_networks_cover_a_lan_with_a_non_standard_range(self):
+        import ui_auth
+        self.assertTrue(ui_auth.is_local_address("172.57.56.240", ["172.57.56.0/24"]))
+        self.assertFalse(ui_auth.is_local_address("172.57.57.1", ["172.57.56.0/24"]))
+        self.assertTrue(ui_auth.is_local_address("172.57.56.240", ["nonsense", " 172.57.0.0/16 "]))      # bad entries are ignored
+
+    def test_password_policy(self):
+        import ui_auth
+        self.assertEqual(ui_auth.validate_password("a long enough phrase", "admin"), [])
+        for bad in ("short", "password123", "ADMINISTRATOR", "aaaaaaaaaaaa", "x" * 300):
+            self.assertTrue(ui_auth.validate_password(bad, "admin"), bad)
+        self.assertTrue(ui_auth.validate_password("Sandra-01", "sandra-01"))      # not the user name

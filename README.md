@@ -64,8 +64,9 @@ speaker-aware subtitles. It also serves a small **web UI** (`/ui`, no build step
 * **Profiles**: different settings per show, path or language.
 * **Playground**: run the same subtitles or clip with different settings and compare the results side by side.
 
-Editing needs a token and a writable config folder; one command creates the token:
-`python subcfg/subcfg.py init-token --dir ./config`. See [docs/web-ui-getting-started.md](docs/web-ui-getting-started.md),
+You sign in with a user name and password: the first time you open `/ui` it asks you to choose the password (default
+user `admin`), so there is nothing to set up beforehand. It needs the config folder mounted read-write. See
+[docs/web-ui-getting-started.md](docs/web-ui-getting-started.md),
 [bridge/README.md](bridge/README.md) and [docs/webui-design.md](docs/webui-design.md).
 
 ## Quick start

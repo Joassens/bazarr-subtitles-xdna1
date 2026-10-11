@@ -542,23 +542,38 @@ def init_token(directory: str, rotate: bool = False) -> tuple[str, list[str]]:
     return token, changed
 
 
+def reset_password(directory: str) -> bool:
+    """Forget the web UI password: the next visitor of /ui/setup chooses a new one. True if there was one."""
+    try:
+        os.remove(os.path.join(directory, "auth.json"))
+        return True
+    except OSError:
+        return False
+
+
 def main() -> None:                       # python -m subcfg ...
     import argparse
     ap = argparse.ArgumentParser(prog="subcfg")
-    ap.add_argument("command", choices=["check", "seed", "show", "init-token"])
-    ap.add_argument("component", nargs="?", help="npusubs, bridge, ... (not needed for init-token)")
+    ap.add_argument("command", choices=["check", "seed", "show", "init-token", "reset-password"])
+    ap.add_argument("component", nargs="?", help="npusubs, bridge, ... (not needed for init-token and reset-password)")
     ap.add_argument("--dir", default=os.environ.get("SUBCFG_DIR", "/config"))
     ap.add_argument("--schemas", default="", help="extra schema directory")
     ap.add_argument("--rotate", action="store_true", help="init-token: replace an existing token")
     ap.add_argument("--url", default="http://<bridge-host>:9500", help="init-token: address of the bridge, for the login link")
     a = ap.parse_args()
+    if a.command == "reset-password":
+        if reset_password(a.dir):
+            print("The web UI password is forgotten. Open the web UI and choose a new one (the setup page appears again).")
+        else:
+            print("There was no password set (no auth.json in that folder).")
+        return
     if a.command == "init-token":
         token, changed = init_token(a.dir, a.rotate)
-        print("\n".join(changed) if changed else "Nothing to change: the token is already set up (use --rotate for a new one).")
-        print(f"\nLog in to the web UI with this address (it sets a cookie, so you only need it once per browser):\n"
-              f"  {a.url.rstrip('/')}/ui?token={token}\n\n"
-              "Keep it private. If the bridge is already running, restart it once so it picks the token up.\n"
-              "Editing also needs the config folder mounted read-write into the bridge.")
+        print("\n".join(changed) if changed else "Nothing to change: the API token is already set up (use --rotate for a new one).")
+        print("\nAPI token for scripts: send it as the header  X-Token: <token>  (and  X-Requested-With: ui  when writing).\n"
+              f"  WEBUI_TOKEN is in {os.path.join(a.dir, 'secrets.env')}\n"
+              "The web UI itself uses a user name and password that you choose the first time you open it.\n"
+              "Restart the bridge once so it picks the token up.")
         return
     if not a.component:
         ap.error("component is required for this command")

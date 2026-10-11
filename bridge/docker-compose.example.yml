@@ -12,6 +12,6 @@ services:
       - ./bridge.py:/app/bazarr-openai-whisperbridge.py:ro
       - ../subcfg/subcfg.py:/app/subcfg.py:ro      # shared configuration library
       - ../config:/config                          # bridge.json, schemas/, secrets.env (copy ../config.example);
-                                                   # read-write so the web UI can save (needs ui.token); use :ro for view-only
+                                                   # read-write: the web UI stores its password and your changes here (:ro = no web UI sign-in possible)
       - ./ui:/app/ui:ro                            # the web UI at /ui
     restart: unless-stopped

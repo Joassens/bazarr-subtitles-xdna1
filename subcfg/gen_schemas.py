@@ -70,8 +70,12 @@ TABLE = {
         ("guard.max_wait_s", N, 21600, "GUARD_MAX_WAIT_S", "Longest a job waits for the guard (s)",
          "After this the request fails (Bazarr will see an error) instead of waiting forever.", {"minimum": 60}),
         ("ui.enabled", B, True, "WEBUI_ENABLED", "Web UI", "Serve the web UI at /ui.", {}),
-        ("ui.token", S, "", "WEBUI_TOKEN", "Web UI access token",
-         "Empty = no token (keep the bridge on a trusted LAN). Visit /ui?token=... once to log in.", {"x-secret": True}),
+        ("ui.token", S, "", "WEBUI_TOKEN", "API token for scripts",
+         "Optional. A script can send it as the header X-Token to use the web UI's JSON API. The web UI itself uses a user name "
+         "and password chosen on first use. Empty = no API token.", {"x-secret": True}),
+        ("ui.trusted_networks", A, [], "WEBUI_TRUSTED_NETWORKS", "Networks allowed to set the first password",
+         "The first-time password page is offered to private and local addresses. If your LAN uses a different range, add it here "
+         "(CIDR, one per line, for example 192.0.2.0/24).", {"items": {"type": S}}),
         ("arr.sonarr_url", S, "", "SONARR_URL", "Sonarr URL", "For show context in prompts.", {}),
         ("arr.sonarr_api_key", S, "", "SONARR_API_KEY", "Sonarr API key", "", {"x-secret": True}),
         ("arr.radarr_url", S, "", "RADARR_URL", "Radarr URL", "", {}),

@@ -186,6 +186,14 @@ class StoreTest(unittest.TestCase):
         self.assertNotEqual(new, token)
         self.assertEqual(open(os.path.join(self.d, "secrets.env")).read().count("WEBUI_TOKEN="), 1)
 
+    def test_reset_password_removes_only_the_password_file(self):
+        write(os.path.join(self.d, "auth.json"), {"username": "admin"})
+        write(os.path.join(self.d, "bridge.json"), {"schema_version": 1})
+        self.assertTrue(subcfg.reset_password(self.d))
+        self.assertFalse(os.path.exists(os.path.join(self.d, "auth.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.d, "bridge.json")))
+        self.assertFalse(subcfg.reset_password(self.d))
+
     def test_init_token_in_an_empty_folder(self):
         d = os.path.join(self.d, "fresh")
         token, changed = subcfg.init_token(d)

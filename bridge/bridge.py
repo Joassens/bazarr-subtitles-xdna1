@@ -1279,6 +1279,7 @@ import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 UI_ENABLED = os.getenv('WEBUI_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
 UI_TOKEN = os.getenv('WEBUI_TOKEN', '')
+UI_TRUSTED_NETWORKS = [n.strip() for n in os.getenv('WEBUI_TRUSTED_NETWORKS', '').split(',') if n.strip()]
 _CFG = None
 if not os.getenv('SUBCFG_DISABLE'):
     try:
@@ -1310,7 +1311,7 @@ _CFG_SIMPLE = {
     'audio.silence_min_s': 'SILENCE_MIN_DURATION_SECS', 'arr.cache_ttl_s': 'MEDIA_CACHE_TTL_SECS',
     'llm.model': 'TRANSLATE_LLM_MODEL', 'llm.dedicated_model': 'TRANSLATE_LLM_MODEL_DEDICATED',
     'whisper.model': 'whisper_model', 'whisper.forced_detect_language': 'force_detected_language_to',
-    'ui.enabled': 'UI_ENABLED', 'ui.token': 'UI_TOKEN',
+    'ui.enabled': 'UI_ENABLED', 'ui.token': 'UI_TOKEN', 'ui.trusted_networks': 'UI_TRUSTED_NETWORKS',
     'guard.heavy_window': 'GUARD_WINDOW', 'guard.min_free_host_ram_gb': 'GUARD_MIN_FREE_RAM_GB',
     'guard.host_ram_url': 'GUARD_HOST_RAM_URL', 'guard.max_llm_models': 'GUARD_MAX_LLM_MODELS',
     'guard.max_wait_s': 'GUARD_MAX_WAIT_S',
@@ -1528,7 +1529,7 @@ def _ui_state() -> dict:
         'version': version, 'started': _STARTED, 'cfg': _CFG, 'get_job': _get_job, 'guard': _guard_status,
         'jobs': [{**{k: v for k, v in j.items() if k not in ('srt', 'detail')}, 'has_srt': 'srt' in j, 'has_detail': 'detail' in j}
                  for j in list(_JOBS)],
-        'enabled': UI_ENABLED, 'token': UI_TOKEN,
+        'enabled': UI_ENABLED, 'token': UI_TOKEN, 'trusted_networks': list(UI_TRUSTED_NETWORKS),
         'speech_urls': list(WHISPER_ASR_URLS), 'prefer_native': WHISPER_PREFER_NATIVE,
         'llm': {'primary': OPENAI_BASE_URL, 'fallback': OPENAI_BASE_URL_FALLBACK, 'dedicated': TRANSLATE_LLM_BASE_URL,
                 'model': TRANSLATE_LLM_MODEL, 'model_fallback': TRANSLATE_LLM_MODEL_FALLBACK,

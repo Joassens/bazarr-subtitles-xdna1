@@ -1,8 +1,9 @@
-"""Web UI for the bridge: dashboard, backends, configuration editor with history (M1-M3).
+"""Web UI for the bridge: dashboard, backends, configuration editor with history, profiles, playground.
 
 Served by the bridge's own FastAPI app, no build step and no extra dependencies (httpx is already used by the bridge).
-Reading is open on the LAN unless `ui.token` is set. Writing is only possible when a token is set, the config folder
-is writable, and the request carries the token plus an `X-Requested-With: ui` header (CSRF guard).
+Access needs a user name and password (see ui_auth.py): the first visitor from the local network chooses the password,
+the default user is `admin`. Scripts can use the optional API token (`ui.token`) in an `X-Token` header instead. Every
+write also needs an `X-Requested-With: ui` header (CSRF guard) and a writable config folder.
 Secrets (x-secret settings) are masked and can not be edited here: they belong in secrets.env.
 """
 from __future__ import annotations
@@ -10,16 +11,21 @@ from __future__ import annotations
 import concurrent.futures as cf
 import glob
 import hmac
+import html
 import os
 import re
 import time
 
 import httpx
 from fastapi import APIRouter, Body, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+
+import ui_auth
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-COOKIE = "subtitle_ui"
+COOKIE = "subtitle_ui_session"
+_auth_stores: dict = {}
+_throttle = ui_auth.Throttle()
 _cache: dict = {"t": 0.0, "data": None}
 _stores: dict = {}
 CACHE_S = 4.0
@@ -98,7 +104,16 @@ def _get_store(st: dict, component: str):
 
 def _can_write(st: dict) -> bool:
     cfg = st["cfg"]
-    return bool(st["token"]) and cfg is not None and os.access(cfg.dir, os.W_OK)
+    return cfg is not None and os.access(cfg.dir, os.W_OK)
+
+
+def _auth_store(st: dict):
+    cfg = st["cfg"]
+    if cfg is None:
+        return None
+    if cfg.dir not in _auth_stores:
+        _auth_stores[cfg.dir] = ui_auth.AuthStore(cfg.dir)
+    return _auth_stores[cfg.dir]
 
 
 def _write_hint(st: dict) -> str | None:
@@ -106,9 +121,6 @@ def _write_hint(st: dict) -> str | None:
     cfg = st["cfg"]
     if cfg is None:
         return "The configuration layer is off: there is no config folder to edit."
-    if not st["token"]:
-        return ("No access token is set. Create one with  python subcfg/subcfg.py init-token --dir <your config folder>"
-                "  (or see docs/web-ui-getting-started.md), then restart the bridge and open the login link it prints.")
     if not os.access(cfg.dir, os.W_OK):
         return "The config folder is mounted read-only. Mount it read-write into the bridge (remove :ro) and restart it."
     return None
@@ -231,36 +243,176 @@ def install(app, get_state, on_change: dict | None = None, playground=None, play
     on_change = on_change or {}
     play_limits = play_limits or {"lines": 300, "audio_mb": 60}
 
+    def identity(request: Request, st: dict):
+        """('token', None) for an API caller, ('session', user) for a signed-in browser, else None."""
+        token = st["token"]
+        given = request.headers.get("x-token")
+        if token and given and hmac.compare_digest(given.encode(), token.encode()):
+            return "token", None
+        auth = _auth_store(st)
+        user = auth.session_user(request.cookies.get(COOKIE)) if auth else None
+        return ("session", user) if user else None
+
+    NO_FOLDER = {"error": "the web UI needs a config folder (it stores the password and the settings there)"}
+
     def check(request: Request, write: bool = False, needs_folder: bool = True):
         st = get_state()
         if not st["enabled"]:
             return JSONResponse({"error": "web UI disabled (ui.enabled=false)"}, status_code=404)
-        token = st["token"]
-        if token:
-            # any of them may be the right one: a stale cookie must not beat a fresh ?token=
-            given = (request.query_params.get("token"), request.headers.get("x-token"), request.cookies.get(COOKIE))
-            if not any(g and hmac.compare_digest(g.encode(), token.encode()) for g in given):
-                return JSONResponse({"error": "token required: open /ui?token=..."}, status_code=401)
+        if st["cfg"] is None:
+            return JSONResponse(NO_FOLDER, status_code=503)
+        if identity(request, st) is None:
+            auth = _auth_store(st)
+            return JSONResponse({"error": "sign in required", "login": "/ui/login" if auth.configured else "/ui/setup"}, status_code=401)
         if write:
-            if not token:
-                return JSONResponse({"error": "editing needs ui.token to be set (WEBUI_TOKEN in secrets.env)"}, status_code=403)
             if request.headers.get("x-requested-with") != "ui":
                 return JSONResponse({"error": "missing X-Requested-With: ui header"}, status_code=403)
             if needs_folder and not _can_write(st):
                 return JSONResponse({"error": "the config folder is read-only: mount it read-write into the bridge"}, status_code=403)
         return None
 
-    @router.get("/ui", response_class=HTMLResponse)
+    def page(name: str, **fields):
+        with open(os.path.join(HERE, name), encoding="utf-8") as f:
+            text = f.read()
+        for k, v in fields.items():
+            text = text.replace("{{" + k + "}}", html.escape(v))
+        return HTMLResponse(text, headers={"Cache-Control": "no-store"})
+
+    def client(request: Request) -> str:
+        return request.client.host if request.client else "?"
+
+    def not_local_text(request: Request) -> str:
+        return (f"First-time setup is only offered to the local network, and your address ({client(request)}) does not look like one. "
+                "If it is your own network, add it (for example 192.0.2.0/24) to ui.trusted_networks in config/bridge.json "
+                "(or the environment variable WEBUI_TRUSTED_NETWORKS) and reload this page.")
+
+    def start_session(request: Request, resp, auth):
+        secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+        resp.set_cookie(COOKIE, auth.new_session(), httponly=True, samesite="strict", secure=secure,
+                        max_age=ui_auth.SESSION_DAYS * 86400, path="/")
+
+    @router.get("/ui")
     def ui(request: Request):
+        st = get_state()
+        if not st["enabled"]:
+            return JSONResponse({"error": "web UI disabled (ui.enabled=false)"}, status_code=404)
+        if st["cfg"] is None:
+            return JSONResponse(NO_FOLDER, status_code=503)
+        if identity(request, st) is None:
+            return RedirectResponse("/ui/login" if _auth_store(st).configured else "/ui/setup", status_code=303)
+        return page("index.html")
+
+    @router.get("/ui/login")
+    def login_page(request: Request):
+        st = get_state()
+        if not st["enabled"] or st["cfg"] is None:
+            return RedirectResponse("/ui", status_code=303)
+        auth = _auth_store(st)
+        if not auth.configured:
+            return RedirectResponse("/ui/setup", status_code=303)
+        if identity(request, st) is not None:
+            return RedirectResponse("/ui", status_code=303)
+        return page("login.html", MODE="login", USER=auth.username)
+
+    @router.get("/ui/setup")
+    def setup_page(request: Request):
+        st = get_state()
+        if not st["enabled"] or st["cfg"] is None:
+            return RedirectResponse("/ui", status_code=303)
+        auth = _auth_store(st)
+        if auth.configured:
+            return RedirectResponse("/ui", status_code=303)
+        if not ui_auth.is_local_address(client(request), st.get("trusted_networks")):
+            return HTMLResponse(not_local_text(request), status_code=403)
+        return page("login.html", MODE="setup" if auth.writable() else "readonly", USER="admin")
+
+    def _form_ok(request: Request):
+        return request.headers.get("x-requested-with") == "ui"
+
+    @router.post("/ui/api/login")
+    def login(request: Request, body: dict = Body(...)):
+        st = get_state()
+        auth = _auth_store(st)
+        if not st["enabled"] or auth is None or not _form_ok(request):
+            return JSONResponse({"error": "not available"}, status_code=403)
+        key = client(request)
+        wait = _throttle.wait_s(key)
+        if wait:
+            return JSONResponse({"error": f"Too many attempts. Try again in {wait} seconds."}, status_code=429,
+                                headers={"Retry-After": str(wait)})
+        if not auth.verify(str(body.get("username", "")), str(body.get("password", ""))):
+            _throttle.failed(key)
+            return JSONResponse({"error": "Wrong user name or password."}, status_code=401)
+        _throttle.ok(key)
+        resp = JSONResponse({"ok": True})
+        start_session(request, resp, auth)
+        return resp
+
+    @router.post("/ui/api/setup")
+    def setup(request: Request, body: dict = Body(...)):
+        st = get_state()
+        auth = _auth_store(st)
+        if not st["enabled"] or auth is None or not _form_ok(request):
+            return JSONResponse({"error": "not available"}, status_code=403)
+        if auth.configured:
+            return JSONResponse({"error": "A password is already set."}, status_code=409)
+        if not ui_auth.is_local_address(client(request), st.get("trusted_networks")):
+            return JSONResponse({"error": not_local_text(request)}, status_code=403)
+        if not auth.writable():
+            return JSONResponse({"error": "The config folder is read-only, so the password can not be saved. Mount it read-write."},
+                                status_code=403)
+        if body.get("password") != body.get("confirm"):
+            return JSONResponse({"errors": ["The two passwords are not the same."]}, status_code=422)
+        errs = auth.setup(str(body.get("username", "admin")), str(body.get("password", "")))
+        if errs:
+            return JSONResponse({"errors": errs}, status_code=422)
+        resp = JSONResponse({"ok": True})
+        start_session(request, resp, auth)
+        return resp
+
+    @router.post("/ui/api/logout")
+    def logout(request: Request):
+        if not _form_ok(request):
+            return JSONResponse({"error": "missing X-Requested-With: ui header"}, status_code=403)
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(COOKIE, path="/")
+        return resp
+
+    @router.post("/ui/api/password")
+    def change_password(request: Request, body: dict = Body(...)):
+        denied = check(request, write=True, needs_folder=False)
+        if denied is not None:
+            return denied
+        st = get_state()
+        if identity(request, st)[0] != "session":
+            return JSONResponse({"error": "Sign in with the password to change it."}, status_code=403)
+        auth = _auth_store(st)
+        if not auth.writable():
+            return JSONResponse({"error": "The config folder is read-only, so the password can not be saved."}, status_code=403)
+        if body.get("new") != body.get("confirm"):
+            return JSONResponse({"errors": ["The two new passwords are not the same."]}, status_code=422)
+        key = client(request)
+        wait = _throttle.wait_s(key)
+        if wait:
+            return JSONResponse({"error": f"Too many attempts. Try again in {wait} seconds."}, status_code=429)
+        errs = auth.change_password(str(body.get("current", "")), str(body.get("new", "")))
+        if errs:
+            if errs[0].startswith("The current"):
+                _throttle.failed(key)
+            return JSONResponse({"errors": errs}, status_code=422)
+        _throttle.ok(key)
+        resp = JSONResponse({"ok": True})
+        start_session(request, resp, auth)                      # the old cookies stopped working with the new key
+        return resp
+
+    @router.get("/ui/api/me")
+    def me(request: Request):
         denied = check(request)
         if denied is not None:
             return denied
-        with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
-            resp = HTMLResponse(f.read())
-        token = get_state()["token"]
-        if token and request.query_params.get("token") == token:
-            resp.set_cookie(COOKIE, token, httponly=True, samesite="strict", max_age=30 * 86400)
-        return resp
+        st = get_state()
+        kind, user = identity(request, st)
+        return {"user": user or "(api token)", "via": kind, "can_write": _can_write(st), "write_hint": _write_hint(st)}
 
     @router.get("/ui/api/status")
     def status(request: Request):
@@ -473,7 +625,7 @@ def install(app, get_state, on_change: dict | None = None, playground=None, play
         if denied is not None:
             return denied
         st = get_state()
-        return {"available": playground is not None, "can_run": bool(st["token"]) and playground is not None,
+        return {"available": playground is not None, "can_run": playground is not None,
                 "write_hint": _write_hint(st),
                 "limits": play_limits, "runs": playground.list() if playground else []}
 

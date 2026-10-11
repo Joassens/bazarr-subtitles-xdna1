@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subtitle bridge: sign in</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mute:#667085;--line:#e3e7ee;--acc:#2f6fed;--bad:#d1383d;--ok:#1a9d57}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--ink:#e6ebf2;--mute:#8b97a8;--line:#273141;--acc:#6a9bff;--bad:#ff6b70;--ok:#38c07c}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px;width:min(420px,100%)}
+h1{font-size:20px;margin:0 0 4px}p{margin:6px 0 14px;color:var(--mute)}label{display:block;font-size:13px;color:var(--mute);margin:12px 0 4px}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+button{margin-top:18px;width:100%;padding:11px;border-radius:8px;border:0;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}.err{color:var(--bad);margin-top:12px;font-size:14px;min-height:1.2em}.hint{font-size:12px;color:var(--mute);margin-top:6px}
+.note{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--mute);margin-top:12px}
+</style>
+</head>
+<body>
+<main class="card" id="card" data-mode="{{MODE}}">
+  <h1>Subtitle bridge</h1>
+  <div id="login" hidden>
+    <p>Sign in to see and change the settings.</p>
+    <form id="f-login">
+      <label for="u1">User name</label><input id="u1" name="username" value="{{USER}}" autocomplete="username" required>
+      <label for="p1">Password</label><input id="p1" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">Sign in</button>
+    </form>
+    <div class="note">Forgot it? Run <code>python subcfg/subcfg.py reset-password --dir &lt;your config folder&gt;</code> on the machine that holds the config folder, then open this page again to choose a new one.</div>
+  </div>
+  <div id="setup" hidden>
+    <p><b>First time here.</b> Choose a password for the admin account. Anyone who knows it can change the settings, so pick a good one.</p>
+    <form id="f-setup">
+      <label for="u2">User name</label><input id="u2" name="username" value="{{USER}}" autocomplete="username" required>
+      <label for="p2">Password</label><input id="p2" name="password" type="password" autocomplete="new-password" minlength="8" required autofocus>
+      <div class="hint">At least 8 characters, and nothing like "password" or "12345678".</div>
+      <label for="c2">Repeat the password</label><input id="c2" name="confirm" type="password" autocomplete="new-password" required>
+      <button type="submit">Save password and continue</button>
+    </form>
+    <div class="note">This page is only offered to computers on your local network, and only until a password is set.</div>
+  </div>
+  <div id="readonly" hidden>
+    <p><b>The config folder is read-only.</b></p>
+    <p>The password is stored in the config folder, so the bridge needs to be able to write there. Mount the folder read-write into the bridge (remove <code>:ro</code>, for example <code>../config:/config</code>), restart it and reload this page.</p>
+  </div>
+  <div class="err" id="err" role="alert"></div>
+</main>
+<script>
+const mode = document.getElementById("card").dataset.mode;
+document.getElementById(mode).hidden = false;
+const err = document.getElementById("err");
+async function send(url, body) {
+  const r = await fetch(url, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-Requested-With": "ui"}, body: JSON.stringify(body)});
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(d.error || (d.errors || []).join(" ") || "Something went wrong (" + r.status + ").");
+  return d;
+}
+function wire(id, url, fields) {
+  const f = document.getElementById(id); if (!f) return;
+  f.onsubmit = async e => {
+    e.preventDefault(); err.textContent = "";
+    const b = f.querySelector("button"); b.disabled = true;
+    try { await send(url, Object.fromEntries(fields.map(n => [n, f.elements[n].value]))); location.href = "/ui"; }
+    catch (x) { err.textContent = x.message; b.disabled = false; }
+  };
+}
+wire("f-login", "/ui/api/login", ["username", "password"]);
+wire("f-setup", "/ui/api/setup", ["username", "password", "confirm"]);
+</script>
+</body>
+</html>
