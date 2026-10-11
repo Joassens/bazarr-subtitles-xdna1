@@ -1555,6 +1555,15 @@ def status():
     return {"version": f"Bazarr to OpenAI Whisper Bridge ({docker_status}) v{version}"}
 
 
+@app.get("/busy")
+def busy():
+    """Counts only (no details): lets a low-priority LLM client (tools/idle_gate.py) stay out of the way of a running job."""
+    jobs = list(_JOBS)
+    return {"active": sum(1 for j in jobs if j.get('status') == 'running') + (1 if _PLAYGROUND.list() and
+            _PLAYGROUND.list()[0]['status'] == 'running' else 0),
+            "waiting": sum(1 for j in jobs if j.get('status') == 'waiting')}
+
+
 @app.post("/detect-language")
 def detect_language():
     print(f"Forced detected language to {force_detected_language_to}")

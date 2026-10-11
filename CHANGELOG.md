@@ -11,6 +11,8 @@
   (source, draft, reviewed text, reasons, SRT download), resource guard (allowed hours, host RAM).
 - **Profiles**: `config/profiles/*.json` match on path and languages; the bridge and npusubs apply them per request.
 - `tools/hostmem_agent.py`: read-only host RAM endpoint for the resource guard.
+- `tools/idle_gate.py`: low-priority lane to an LLM server for background clients (for example Lingarr); the bridge
+  reports `GET /busy` (job counts only) so the gate stays closed while a subtitle job is running.
 - CI runs the unit tests and checks that the generated schemas are current.
 
 ### npusubs
