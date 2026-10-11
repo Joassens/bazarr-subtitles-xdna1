@@ -28,6 +28,7 @@ button.pri{background:var(--acc);border-color:var(--acc);color:#fff}button:disab
 .err{color:var(--bad)}.sec{margin:22px 0 6px;font-size:15px}.tiny{font-size:12px}.num{text-align:right;white-space:nowrap}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:3}
 .bar .msg{flex:1;min-width:200px}.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:18px}dialog::backdrop{background:rgba(0,0,0,.4)}
 .ok{color:var(--ok)}.diff-old{color:var(--bad)}.diff-new{color:var(--ok)}
 .orow{display:flex;gap:6px;align-items:flex-start;margin:4px 0;flex-wrap:wrap}.orow select,.orow input,.orow textarea{width:auto;min-width:130px;flex:1}
 .cols{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.form{display:grid;gap:10px;max-width:720px}.form label{display:block;font-size:12px;color:var(--mute);margin-bottom:2px}
@@ -39,7 +40,16 @@ pre{white-space:pre-wrap;word-break:break-word;font:12px/1.4 ui-monospace,Menlo,
   <h1>Subtitle bridge</h1>
   <nav id="nav"><a data-t="dashboard">Dashboard</a><a data-t="backends">Backends</a><a data-t="config">Configuration</a><a data-t="profiles">Profiles</a><a data-t="playground">Playground</a><a data-t="history">History</a></nav>
   <span class="sp"></span><span id="chip" class="muted tiny"></span>
+  <span id="me" class="muted tiny"></span><button class="link" id="pwbtn">Change password</button><button class="link" id="outbtn">Sign out</button>
 </header>
+<dialog id="pw"><form id="pwform" method="dialog" class="form" style="min-width:min(340px,80vw)">
+  <b>Change password</b>
+  <div><label>Current password</label><input type="password" name="current" autocomplete="current-password" required></div>
+  <div><label>New password (at least 8 characters)</label><input type="password" name="new" autocomplete="new-password" minlength="8" required></div>
+  <div><label>Repeat the new password</label><input type="password" name="confirm" autocomplete="new-password" required></div>
+  <div class="err tiny" id="pwerr"></div>
+  <div><button class="pri" type="submit">Save</button> <button type="button" id="pwcancel">Cancel</button></div>
+</form></dialog>
 <main id="view"><p class="muted">Loading…</p></main>
 <div id="bar" class="bar" hidden></div>
 <script>
@@ -56,6 +66,7 @@ async function api(p, body) {
   if (body !== undefined) { opt.method = "POST"; opt.headers = {"Content-Type": "application/json", "X-Requested-With": "ui"}; opt.body = JSON.stringify(body); }
   const r = await fetch(p, opt);
   let data = null; try { data = await r.json(); } catch (e) {}
+  if (r.status === 401 && data && data.login) { location.href = data.login; return new Promise(() => {}); }
   if (!r.ok) { const e = new Error((data && (data.error || (data.errors || []).join("; "))) || r.status); e.status = r.status; e.errors = data && data.errors; throw e; }
   return data;
 }
@@ -463,6 +474,19 @@ async function load() {
   } catch (e) { $("#view").innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 document.querySelectorAll("#nav a").forEach(a => a.onclick = () => { if (tab === "config") readFields(); tab = a.dataset.t; location.hash = tab; S.jobView = null; notice = ""; saveErrors = []; if (tab !== "history") compare = null; render(); load(); });
+async function who() {
+  try { const m = await api("/ui/api/me"); $("#me").textContent = m.via === "session" ? "signed in as " + m.user : "";
+    if (m.via !== "session") { $("#pwbtn").hidden = true; $("#outbtn").hidden = true; } } catch (e) {}
+}
+$("#outbtn").onclick = async () => { try { await api("/ui/api/logout", {}); } catch (e) {} location.href = "/ui/login"; };
+$("#pwbtn").onclick = () => { $("#pwerr").textContent = ""; $("#pwform").reset(); $("#pw").showModal(); };
+$("#pwcancel").onclick = () => $("#pw").close();
+$("#pwform").onsubmit = async e => {
+  e.preventDefault(); const f = e.target; $("#pwerr").textContent = "";
+  try { await api("/ui/api/password", {current: f.current.value, new: f.new.value, confirm: f.confirm.value}); $("#pw").close(); notice = "Password changed."; render(); }
+  catch (x) { $("#pwerr").textContent = (x.errors || [x.message]).join(" "); }
+};
+who();
 load(); setInterval(() => { if ((tab === "dashboard" || tab === "backends") && !document.hidden && !S.jobView) load(); }, 5000);
 </script>
 </body>

@@ -65,14 +65,16 @@ Mount the `ui/` folder next to `bridge.py` (`./ui:/app/ui:ro`, see the compose e
   service. One run at a time (shown with its elapsed time); runs stay in memory until the bridge restarts. A translation
   run waits for real jobs and holds them back while it runs, because it changes the bridge's settings.
 
-**New here? See [../docs/web-ui-getting-started.md](../docs/web-ui-getting-started.md): one command creates the token.**
+**Signing in:** the web UI asks for a user name and password. The first time you open it, it asks you to choose the
+password (default user `admin`), from a computer on your local network; see
+[../docs/web-ui-getting-started.md](../docs/web-ui-getting-started.md). The password is stored in the config folder
+(`auth.json`, hashed), so the folder must be mounted read-write (`../config:/config`). Forgot it:
+`python subcfg/subcfg.py reset-password --dir ./config`. Writes also need an `X-Requested-With: ui` header (CSRF guard) and
+are refused when the file changed since it was loaded (HTTP 409). `ui.enabled=false` turns the UI off.
 
-Editing is only enabled when a token is set **and** the config folder is mounted read-write (`../config:/config`).
-Set `ui.token` (in `config/secrets.env` as `WEBUI_TOKEN`, referenced from `bridge.json` as `"${WEBUI_TOKEN}"`; restart the
-bridge after changing it): open `/ui?token=...` once to log in (a cookie is set), or send an `X-Token` header to the
-JSON endpoints. Writes additionally need an `X-Requested-With: ui` header (CSRF guard) and are refused when the file
-changed since it was loaded (HTTP 409). Without a token the UI is read-only and open to everyone who can reach the
-bridge, so keep it on a trusted LAN. `ui.enabled=false` turns it off.
+**Scripts** can use an optional API token instead of the password: `python subcfg/subcfg.py init-token` creates it
+(`ui.token`, referenced from `bridge.json`), and the script sends it as an `X-Token` header. It works for the JSON API only,
+not for the web page.
 
 JSON API: `GET /ui/api/status`, `GET /ui/api/config?component=`, `POST /ui/api/config/<component>`
 (`{"changes": {"beam": 4}, "remove": ["music.enabled"], "etag": "..."}`), `GET /ui/api/history/<component>[/<snapshot>]`,

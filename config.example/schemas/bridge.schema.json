@@ -390,10 +390,20 @@
         "token": {
           "type": "string",
           "default": "",
-          "title": "Web UI access token",
-          "description": "Empty = no token (keep the bridge on a trusted LAN). Visit /ui?token=... once to log in.",
+          "title": "API token for scripts",
+          "description": "Optional. A script can send it as the header X-Token to use the web UI's JSON API. The web UI itself uses a user name and password chosen on first use. Empty = no API token.",
           "x-env": "WEBUI_TOKEN",
           "x-secret": true
+        },
+        "trusted_networks": {
+          "type": "array",
+          "default": [],
+          "title": "Networks allowed to set the first password",
+          "description": "The first-time password page is offered to private and local addresses. If your LAN uses a different range, add it here (CIDR, one per line, for example 192.0.2.0/24).",
+          "x-env": "WEBUI_TRUSTED_NETWORKS",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

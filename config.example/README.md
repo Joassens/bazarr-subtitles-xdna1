@@ -24,14 +24,12 @@ Changes to a file are picked up within a few seconds, without a restart. Setting
 model, thread count) need a restart. An invalid file never breaks a running service: the last good configuration stays
 active and the problem is reported (`errors`).
 
-## Making the web UI editable
+## The web UI password
 
-```bash
-python subcfg/subcfg.py init-token --dir ./config --url http://<bridge-host>:9500
-```
-
-creates `WEBUI_TOKEN` in `secrets.env`, points `bridge.json` at it and prints the login link. Details and troubleshooting:
-[docs/web-ui-getting-started.md](../docs/web-ui-getting-started.md).
+Nothing to configure: the first time you open the bridge's `/ui` it asks you to choose a password (stored hashed in
+`auth.json` in this folder, which therefore has to be writable). Forgot it:
+`python subcfg/subcfg.py reset-password --dir ./config`. Scripts can use an optional API token
+(`python subcfg/subcfg.py init-token`). Details: [docs/web-ui-getting-started.md](../docs/web-ui-getting-started.md).
 
 ## From environment variables to files
 

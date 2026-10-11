@@ -4,11 +4,15 @@ These services are meant for a trusted home or lab network. Please do not expose
 
 * **npusubs has no authentication.** Compose binds it to `127.0.0.1` by default; set `NPUSUBS_BIND` to a LAN address only
   if you need to.
-* **The bridge web UI** is open to anyone who can reach it **unless `ui.token` is set**. With a token (create one with
-  `python subcfg/subcfg.py init-token`, see docs/web-ui-getting-started.md), the page and the JSON API need it
-  (cookie, `X-Token` header or `?token=`), and every write also needs an `X-Requested-With: ui` header
-  (CSRF guard) and a writable config folder. The token is compared in constant time. There is no TLS and no login page:
-  put a reverse proxy in front if you need that. Without a token the UI is read-only.
+* **The bridge web UI** needs a user name and password. The first visitor from the **local network** chooses the password
+  (default user `admin`; at least 8 characters, easy ones are refused); until then nothing else in the UI is reachable
+  and the setup page is not offered to public addresses. The password is stored as a salted scrypt hash in
+  `config/auth.json` (chmod 600); sessions are signed `HttpOnly`, `SameSite=Strict` cookies that stop working when the
+  password changes; failed logins are slowed down per client address (5 free tries, then 30 s doubling to 15 min). Every
+  write also needs an `X-Requested-With: ui` header (CSRF guard) and a writable config folder. There is **no TLS**: put a
+  reverse proxy in front if you need HTTPS or remote access. Forgot the password: `python subcfg/subcfg.py reset-password`.
+* **The optional API token** (`ui.token`, header `X-Token`) is for scripts only: it opens the JSON API, never the web page,
+  and cannot change the password. It is compared in constant time. Without `ui.token` there is no API token.
 * **Secrets** (API keys, the Hugging Face token, the UI token) belong in `secrets.env` or the environment, never in the
   JSON files and never in git. The UI never returns secret values and refuses to edit them. Other settings (URLs, for
   example) are shown and stored as typed, so do not put credentials into them.
