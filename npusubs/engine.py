@@ -7,6 +7,7 @@ decoder's cross-attention), language detection, temperature fallback, prompts.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import os
@@ -19,6 +20,7 @@ import numpy as np
 import torch
 
 from . import config
+from .progress import Progress, SegmentTap
 from .vad import TimeMap, Vad
 
 log = logging.getLogger("npusubs")
@@ -101,6 +103,7 @@ class Engine:
         self.encoder: NpuAudioEncoder | None = None
         self._lock = threading.Semaphore(1)
         self.current: dict | None = None          # the job running on the NPU right now (for dashboards)
+        self._progress: Progress | None = None
         self.stats = {"requests": 0, "audio_s": 0.0, "wall_s": 0.0, "started": time.time(), "ready": False}
 
     # live settings (re-read on every use, so a changed config file applies to the next request)
@@ -151,6 +154,11 @@ class Engine:
         log.info("warmup done in %.1fs", time.perf_counter() - t0)
 
     # ------------------------------------------------------------------ helpers
+    def progress_snapshot(self) -> dict | None:
+        """What the running transcription has written so far (None when idle)."""
+        p = self._progress
+        return p.snapshot() if p is not None else None
+
     def _acquire(self):
         if not self._lock.acquire(timeout=self.queue_wait):
             raise TimeoutError("NPU busy: queue wait exceeded")
@@ -187,15 +195,19 @@ class Engine:
             work, tmap, regions = self.vad.condense(audio)
         self._acquire()
         self.current = {"audio_s": round(duration), "started": time.time(), "beam": beam, "vad": bool(use_vad)}
+        # live progress: Whisper prints each finished segment (verbose=True); catch those lines for the dashboard
+        self._progress = Progress(len(work) / SR, to_orig=tmap.to_orig if getattr(tmap, "pieces", None) else None)
         try:
-            result = self.model.transcribe(
-                work, language=language or None, task=task, initial_prompt=initial_prompt, fp16=False,
-                word_timestamps=True, condition_on_previous_text=False, temperature=temperature,
-                compression_ratio_threshold=2.4, logprob_threshold=-1.0, no_speech_threshold=0.6,
-                hallucination_silence_threshold=2.0, verbose=None,
-                **({"beam_size": beam, "best_of": beam} if beam and beam > 1 else {}))
+            with contextlib.redirect_stdout(SegmentTap(self._progress.add)):
+                result = self.model.transcribe(
+                    work, language=language or None, task=task, initial_prompt=initial_prompt, fp16=False,
+                    word_timestamps=True, condition_on_previous_text=False, temperature=temperature,
+                    compression_ratio_threshold=2.4, logprob_threshold=-1.0, no_speech_threshold=0.6,
+                    hallucination_silence_threshold=2.0, verbose=True,
+                    **({"beam_size": beam, "best_of": beam} if beam and beam > 1 else {}))
         finally:
             self.current = None
+            self._progress = None
             self._lock.release()
         segments = _clean_segments(result, tmap, regions)
         wall = time.perf_counter() - t0

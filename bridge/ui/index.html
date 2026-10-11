@@ -29,6 +29,8 @@ button.pri{background:var(--acc);border-color:var(--acc);color:#fff}button:disab
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:3}
 .bar .msg{flex:1;min-width:200px}.tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);padding:18px}dialog::backdrop{background:rgba(0,0,0,.4)}
+.bar2{height:6px;border-radius:4px;background:var(--chip);margin:6px 0 2px;overflow:hidden}.bar2 i{display:block;height:100%;background:var(--acc)}
+.live{font-size:12px;line-height:1.35;max-height:150px;overflow:auto;border-left:2px solid var(--line);padding-left:8px;margin-top:4px;color:var(--ink)}.live .t{color:var(--mute);margin-right:6px}
 .ok{color:var(--ok)}.diff-old{color:var(--bad)}.diff-new{color:var(--ok)}
 .orow{display:flex;gap:6px;align-items:flex-start;margin:4px 0;flex-wrap:wrap}.orow select,.orow input,.orow textarea{width:auto;min-width:130px;flex:1}
 .cols{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.form{display:grid;gap:10px;max-width:720px}.form label{display:block;font-size:12px;color:var(--mute);margin-bottom:2px}
@@ -89,8 +91,9 @@ function dashboard() {
       ${i === s.speech_in_use ? '<span class="chip acc">in use now</span>' : ""}<br>
       <span class="muted tiny">${esc(x.kind)}${x.ms != null ? " · " + x.ms + " ms" : ""}${x.error ? " · " + esc(x.error) : ""}</span>
       ${x.kind === "npusubs" ? `<div class="tiny">model ${esc(d.model)} · beam ${esc(d.beam)} · VAD ${d.vad ? "on" : "off"} · diarization: ${esc(d.diarization)} · ${esc(d.requests)} requests</div>
-        <div class="tiny">${cur ? `<span class="chip acc">NPU busy</span> ${dur(cur.audio_s)} audio, running ${dur(cur.running_s)}` : `<span class="chip on">NPU idle</span>`}
+        <div class="tiny">${cur ? `<span class="chip acc">NPU busy</span> ${dur(cur.audio_s)} audio, running ${dur(cur.running_s)}` : d.jobs && d.jobs.running ? `<span class="chip acc">${esc(d.jobs.phase)}</span>` : `<span class="chip on">NPU idle</span>`}
           ${d.jobs && d.jobs.queued ? `<span class="chip mod">${d.jobs.queued} waiting in line</span>` : ""}</div>
+        ${liveBlock(cur)}
         ${(d.config_errors || []).length ? `<div class="err tiny">${d.config_errors.map(esc).join("<br>")}</div>` : ""}` : ""}
       </div></div>`; }).join("") : `<p class="muted">No speech services configured; the OpenAI-compatible fallback is used.</p>`;
   const llm = s.llm.filter(x => x.configured).map(x => `<div class="row">${dot(x.ok)}<div class="grow"><b>${esc(x.role)}</b>
@@ -112,6 +115,14 @@ function dashboard() {
     <div class="card"><h2>Sonarr / Radarr</h2>${arr}</div>
     ${guardCard(s.guard)}
     <div class="card wide"><h2>Recent requests</h2>${jobs}</div></div>`;
+}
+function liveBlock(cur) {
+  const pr = cur && cur.progress;
+  if (!pr) return "";
+  const eta = pr.percent >= 3 && pr.percent < 100 ? " · about " + dur(cur.running_s * (100 - pr.percent) / pr.percent) + " left" : "";
+  const mm = t => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  return `<div class="bar2"><i style="width:${pr.percent}%"></i></div><div class="tiny muted">${pr.percent}% · ${pr.segments} lines so far${eta}</div>
+    <div class="live">${pr.recent.slice().reverse().map(r => `<div><span class="t">${mm(r.start)}</span>${esc(r.text)}</div>`).join("") || '<span class="muted">waiting for the first line…</span>'}</div>`;
 }
 function guardCard(g) {
   if (!g) return "";

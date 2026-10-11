@@ -22,6 +22,7 @@ engine = Engine()
 diarizer = DiarizerRouter(Diarizer(), LocalDiarizer())
 # One request at a time, start to finish (decoding, NPU, CPU decoder, diarization): see jobs.py
 jobs = JobGate(config.get("max_concurrent_jobs", 1))
+_phase = {"name": "idle"}                      # what the running request is doing (for dashboards)
 _state = {"loading": True, "error": None}
 
 
@@ -62,13 +63,17 @@ def _run(raw: bytes, **kw):
     """Run one request, alone: the others wait in line (first come, first served)."""
     try:
         with jobs.slot(float(config.get("queue_wait_s", 21600))):
-            return _run_job(raw, **kw)
+            try:
+                return _run_job(raw, **kw)
+            finally:
+                _phase["name"] = "idle"
     except TimeoutError as exc:
         raise HTTPException(503, str(exc))
 
 
 def _run_job(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min_spk, max_spk, filter_: bool = True,
              beam_size: Optional[int] = None, diarize_engine: Optional[str] = None):
+    _phase["name"] = "decoding the audio"
     try:
         wav = audio_mod.decode(raw, raw_pcm=raw_pcm)
     except audio_mod.AudioError as exc:
@@ -99,17 +104,20 @@ def _run_job(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize,
     if do_diarize and config.get("diarization.parallel"):
         worker = threading.Thread(target=_diarize, name="diarize", daemon=True)
         worker.start()
+    _phase["name"] = "transcribing"
     try:
         res = engine.transcribe(wav, language=_lang(language), task=task, initial_prompt=prompt or None, vad=vad,
                                 beam_size=beam_size)
     except TimeoutError as exc:
         raise HTTPException(503, str(exc))
+    _phase["name"] = "cleaning up the text"
     if filter_:
         res["segments"] = filters.apply_all(res["segments"])
         res["text"] = " ".join(s["text"] for s in res["segments"])
     if worker is not None:
         worker.join()
     elif do_diarize:
+        _phase["name"] = f"telling the speakers apart ({diarizer.engine_name(diarize_engine)})"
         _diarize()
     if box.get("turns"):
         assign_speakers(res["segments"], box["turns"])
@@ -152,8 +160,8 @@ def health():
             "requests": st["requests"], "audio_seconds": round(st["audio_s"], 1), "wall_seconds": round(st["wall_s"], 1),
             "uptime_s": round(time.time() - st["started"], 1),
             "npu_encoder_s": round(engine.encoder.busy_s, 1) if engine.encoder else None,
-            "current": ({**cur, "running_s": round(time.time() - cur["started"])} if cur else None),
-            "jobs": {"running": jobs.running, "queued": jobs.waiting, "max_concurrent": jobs.slots},
+            "current": ({**cur, "running_s": round(time.time() - cur["started"]), "progress": engine.progress_snapshot()} if cur else None),
+            "jobs": {"running": jobs.running, "queued": jobs.waiting, "max_concurrent": jobs.slots, "phase": _phase["name"]},
             "beam": config.get("beam"),
             "config": {"dir": config.store.dir, "file": os.path.exists(os.path.join(config.store.dir, "npusubs.json")),
                        "errors": config.store.errors, "beam": config.get("beam"), "beam_source": config.store.source("beam")}}
