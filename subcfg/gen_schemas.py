@@ -85,7 +85,10 @@ TABLE = {
     "npusubs": [
         ("model", S, "large-v3-turbo", "NPUSUBS_MODEL", "Whisper model", "", {"x-restart": True}),
         ("threads", I, 8, "NPUSUBS_THREADS", "CPU threads for the decoder", "", {"minimum": 1, "maximum": 64, "x-restart": True}),
-        ("queue_wait_s", N, 21600, "NPUSUBS_QUEUE_WAIT", "Max wait for the NPU (s)", "One job at a time.", {"minimum": 1}),
+        ("max_concurrent_jobs", I, 1, "NPUSUBS_MAX_JOBS", "Requests at the same time",
+         "Keep it at 1: a request uses the NPU, the CPU cores and a lot of memory, and two at once slow each other down badly. "
+         "The others wait in line.", {"minimum": 1, "maximum": 4, "x-restart": True}),
+        ("queue_wait_s", N, 21600, "NPUSUBS_QUEUE_WAIT", "Max wait in line (s)", "How long a request waits for its turn before it gets a 503.", {"minimum": 1}),
         ("beam", I, 5, "NPUSUBS_BEAM", "Beam width", "1 = greedy (fast), 5 = accurate (about 4-5x slower).", {"minimum": 1, "maximum": 10}),
         ("vad.enabled", B, True, "NPUSUBS_VAD", "Skip silence (VAD)", "", {}),
         ("vad.threshold", N, 0.35, None, "VAD threshold", "Lower keeps more.", {"minimum": 0.05, "maximum": 0.95}),

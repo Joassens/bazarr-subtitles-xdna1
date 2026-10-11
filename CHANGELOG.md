@@ -16,6 +16,7 @@
 - CI runs the unit tests and checks that the generated schemas are current.
 
 ### npusubs
+- One request at a time from start to finish (a first-come-first-served queue, `max_concurrent_jobs`), so a diarization never overlaps the next transcription.
 - Token-free speaker diarization (`diarization.engine`: auto, pyannote, embedding), also selectable per request and in the bridge.
 - Whisper large-v3-turbo with the encoder on the AMD XDNA 1 NPU, `whisper-asr-webservice` and OpenAI-compatible APIs.
 - Silero VAD with time mapping, music/lyrics regions, hallucination filters, subtitle formatting (CJK aware).

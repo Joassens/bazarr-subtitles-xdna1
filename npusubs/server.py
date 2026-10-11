@@ -14,11 +14,14 @@ from . import __version__, audio as audio_mod, config, filters, subtitles
 from .diarize import Diarizer, assign_speakers, run_on_regions
 from .diarize_local import DiarizerRouter, LocalDiarizer
 from .engine import Engine
+from .jobs import JobGate
 
 log = logging.getLogger("npusubs")
 app = FastAPI(title="npusubs", version=__version__)
 engine = Engine()
 diarizer = DiarizerRouter(Diarizer(), LocalDiarizer())
+# One request at a time, start to finish (decoding, NPU, CPU decoder, diarization): see jobs.py
+jobs = JobGate(config.get("max_concurrent_jobs", 1))
 _state = {"loading": True, "error": None}
 
 
@@ -55,8 +58,17 @@ def _lang(code: Optional[str]) -> Optional[str]:
     return code if code not in ("auto", "none", "") else None
 
 
-def _run(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min_spk, max_spk, filter_: bool = True,
-         beam_size: Optional[int] = None, diarize_engine: Optional[str] = None):
+def _run(raw: bytes, **kw):
+    """Run one request, alone: the others wait in line (first come, first served)."""
+    try:
+        with jobs.slot(float(config.get("queue_wait_s", 21600))):
+            return _run_job(raw, **kw)
+    except TimeoutError as exc:
+        raise HTTPException(503, str(exc))
+
+
+def _run_job(raw: bytes, *, raw_pcm: bool, language, task, prompt, vad, diarize, min_spk, max_spk, filter_: bool = True,
+             beam_size: Optional[int] = None, diarize_engine: Optional[str] = None):
     try:
         wav = audio_mod.decode(raw, raw_pcm=raw_pcm)
     except audio_mod.AudioError as exc:
@@ -141,6 +153,7 @@ def health():
             "uptime_s": round(time.time() - st["started"], 1),
             "npu_encoder_s": round(engine.encoder.busy_s, 1) if engine.encoder else None,
             "current": ({**cur, "running_s": round(time.time() - cur["started"])} if cur else None),
+            "jobs": {"running": jobs.running, "queued": jobs.waiting, "max_concurrent": jobs.slots},
             "beam": config.get("beam"),
             "config": {"dir": config.store.dir, "file": os.path.exists(os.path.join(config.store.dir, "npusubs.json")),
                        "errors": config.store.errors, "beam": config.get("beam"), "beam_source": config.store.source("beam")}}
@@ -186,7 +199,11 @@ def detect_language(audio_file: UploadFile = File(...), encode: bool = Query(Tru
         wav = audio_mod.decode(audio_file.file.read(), raw_pcm=not encode)
     except audio_mod.AudioError as exc:
         raise HTTPException(400, str(exc))
-    return engine.detect_language(wav)
+    try:
+        with jobs.slot(float(config.get("queue_wait_s", 21600))):        # in line with the transcriptions
+            return engine.detect_language(wav)
+    except TimeoutError as exc:
+        raise HTTPException(503, str(exc))
 
 
 # --------------------------------------------------- OpenAI-compatible API

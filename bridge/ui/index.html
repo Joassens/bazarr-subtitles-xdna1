@@ -89,7 +89,8 @@ function dashboard() {
       ${i === s.speech_in_use ? '<span class="chip acc">in use now</span>' : ""}<br>
       <span class="muted tiny">${esc(x.kind)}${x.ms != null ? " · " + x.ms + " ms" : ""}${x.error ? " · " + esc(x.error) : ""}</span>
       ${x.kind === "npusubs" ? `<div class="tiny">model ${esc(d.model)} · beam ${esc(d.beam)} · VAD ${d.vad ? "on" : "off"} · diarization: ${esc(d.diarization)} · ${esc(d.requests)} requests</div>
-        <div class="tiny">${cur ? `<span class="chip acc">NPU busy</span> ${dur(cur.audio_s)} audio, running ${dur(cur.running_s)}` : `<span class="chip on">NPU idle</span>`}</div>
+        <div class="tiny">${cur ? `<span class="chip acc">NPU busy</span> ${dur(cur.audio_s)} audio, running ${dur(cur.running_s)}` : `<span class="chip on">NPU idle</span>`}
+          ${d.jobs && d.jobs.queued ? `<span class="chip mod">${d.jobs.queued} waiting in line</span>` : ""}</div>
         ${(d.config_errors || []).length ? `<div class="err tiny">${d.config_errors.map(esc).join("<br>")}</div>` : ""}` : ""}
       </div></div>`; }).join("") : `<p class="muted">No speech services configured; the OpenAI-compatible fallback is used.</p>`;
   const llm = s.llm.filter(x => x.configured).map(x => `<div class="row">${dot(x.ok)}<div class="grow"><b>${esc(x.role)}</b>

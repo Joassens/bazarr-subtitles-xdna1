@@ -56,7 +56,7 @@ def _speech(url: str) -> dict:
         info.update(kind="npusubs", ok=d.get("status") == "ok", detail={
             "status": d.get("status"), "model": d.get("model"), "version": d.get("version"), "beam": d.get("beam"),
             "vad": d.get("vad"), "diarization": d.get("diarization"), "requests": d.get("requests"),
-            "current": d.get("current"), "config_errors": (d.get("config") or {}).get("errors") or []})
+            "current": d.get("current"), "jobs": d.get("jobs"), "config_errors": (d.get("config") or {}).get("errors") or []})
         return info
     r = _probe(url + "/")
     if r["ok"]:
