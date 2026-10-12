@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gpuarbiter</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b1f24;--mute:#68717d;--line:#dde1e6;--acc:#2f6fed;--chip:#eef1f5;--ok:#1d9a5b;--warn:#d9822b;--bad:#c9352f}
+@media (prefers-color-scheme: dark){:root{--bg:#14171b;--card:#1c2025;--ink:#e6e9ed;--mute:#97a0ab;--line:#2b3138;--acc:#6b9bff;--chip:#262b32;--ok:#4cc38a;--warn:#f0a35a;--bad:#ff7b72}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;padding:14px 16px 0}h1{font-size:18px;margin:0}
+main{padding:12px 16px 32px;display:grid;gap:14px;max-width:1000px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin:0 0 8px}
+.muted{color:var(--mute)}.tiny{font-size:12px}
+.chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;background:var(--chip)}
+.chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:middle}th{color:var(--mute);font-weight:500}
+input[type=number],input[type=text]{font:inherit;width:90px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:3px 6px}
+input[type=text]{width:100%}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:4px 12px;cursor:pointer}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 14px}
+label.f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--mute)}
+.k-pause,.k-would_pause{color:var(--warn)}.k-resume,.k-would_resume{color:var(--ok)}.k-error{color:var(--bad)}.k-config,.k-note,.k-external_resume{color:var(--mute)}
+#msg{margin-left:10px}
+</style>
+</head>
+<body>
+<header><h1>gpuarbiter</h1><span id="top" class="muted tiny">connecting...</span></header>
+<main>
+  <section class="card"><h2>Now</h2><div id="now"></div></section>
+  <section class="card">
+    <h2>Priorities <span class="muted tiny">(1 = most important; a class with a controller yields to busier classes with a lower number on a shared engine)</span></h2>
+    <table id="classes"></table>
+    <p style="margin:8px 0 0"><button id="add">Add class</button></p>
+  </section>
+  <section class="card">
+    <h2>Settings</h2>
+    <div class="grid" id="settings"></div>
+    <p style="margin:12px 0 0"><button class="primary" id="save">Save</button><span id="msg" class="tiny"></span></p>
+    <p class="muted tiny">Class names must match the names gpuwatch shows. Saving keeps the previous version in the config folder (history/).</p>
+  </section>
+  <section class="card"><h2>Decisions</h2><table id="events"></table></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const ENGINES = ["gfx", "compute", "media", "dma"];
+const when = ts => new Date(ts * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+let cfg = null, loaded = false;
+const get = async u => (await fetch(u)).json();
+
+function drawClasses() {
+  $("classes").innerHTML = "<tr><th>Class</th><th>Priority</th><th>Engines</th><th>Controller</th><th></th></tr>" + cfg.classes.map((c, i) =>
+    `<tr><td><input type="text" data-i="${i}" data-k="name" value="${esc(c.name)}"></td>
+     <td><input type="number" data-i="${i}" data-k="priority" value="${c.priority}" step="1"></td>
+     <td>${ENGINES.map(e => `<label><input type="checkbox" data-i="${i}" data-e="${e}" ${(c.engines || []).includes(e) ? "checked" : ""}>${e}</label>`).join(" ")}</td>
+     <td>${c.controller ? `<span class="chip">${esc(c.controller)}</span>` : '<span class="muted">-</span>'}</td>
+     <td><button data-del="${i}">Remove</button></td></tr>`).join("");
+}
+function drawSettings() {
+  const f = (label, key, val, step = "1") => `<label class="f">${label}<input type="number" data-s="${key}" value="${val}" step="${step}"></label>`;
+  $("settings").innerHTML =
+    `<label class="f">Dry run (only log what would happen)<span><input type="checkbox" data-s="dry_run" ${cfg.dry_run ? "checked" : ""}> dry run</span></label>` +
+    f("Busy from (% load)", "active_pct", cfg.active_pct, "0.5") + f("Wait before pausing (s)", "hold_s", cfg.hold_s) +
+    f("Quiet time before resuming (s)", "release_s", cfg.release_s) + f("Respect a manual resume for (s)", "manual_override_s", cfg.manual_override_s) +
+    `<label class="f">RAM guard<span><input type="checkbox" data-s="ram.enabled" ${cfg.ram_guard.enabled ? "checked" : ""}> on</span></label>` +
+    f("Pause below (GB free)", "ram.pause_below_gb", cfg.ram_guard.pause_below_gb, "0.5") + f("Resume above (GB free)", "ram.resume_above_gb", cfg.ram_guard.resume_above_gb, "0.5");
+}
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.k !== undefined) cfg.classes[+t.dataset.i][t.dataset.k] = t.dataset.k === "priority" ? +t.value : t.value;
+  if (t.dataset.e) { const c = cfg.classes[+t.dataset.i]; c.engines = (c.engines || []).filter(x => x !== t.dataset.e); if (t.checked) c.engines.push(t.dataset.e); }
+  if (t.dataset.s) { const v = t.type === "checkbox" ? t.checked : +t.value;
+    if (t.dataset.s.startsWith("ram.")) cfg.ram_guard[t.dataset.s.slice(4)] = v; else cfg[t.dataset.s] = v; }
+});
+document.addEventListener("click", e => {
+  if (e.target.dataset.del !== undefined) { cfg.classes.splice(+e.target.dataset.del, 1); drawClasses(); }
+});
+$("add").onclick = () => { cfg.classes.push({name: "", priority: 5, engines: []}); drawClasses(); };
+$("save").onclick = async () => {
+  const r = await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "arbiter"}, body: JSON.stringify(cfg)});
+  const j = await r.json();
+  $("msg").textContent = r.ok ? "saved" : (j.problems || [j.error]).join("; ");
+  $("msg").style.color = r.ok ? "var(--ok)" : "var(--bad)";
+};
+async function refresh() {
+  try {
+    const s = await get("/api/state");
+    $("top").innerHTML = `${s.dry_run ? '<span class="chip warn">dry run: only logging</span>' : '<span class="chip ok">live</span>'} last poll ${Math.round(s.now - s.last_poll)} s ago · host RAM ${s.ram_gb == null ? "?" : s.ram_gb.toFixed(1) + " GB free"}`;
+    const busy = Object.entries(s.busy_classes).map(([n, v]) => `<span class="chip">${esc(n)}: ${ENGINES.filter(e => v[e] >= 0.5).map(e => e + " " + v[e] + "%").join(", ")}</span>`).join(" ") || '<span class="muted">nothing is busy on the GPU</span>';
+    const cons = Object.entries(s.consumers).map(([n, c]) => {
+      const st = c.paused === null ? "unknown" : c.paused ? (c.paused_by_arbiter ? '<span class="chip warn">paused by the arbiter</span>' : '<span class="chip">paused by hand</span>') : '<span class="chip ok">running</span>';
+      const why = Object.values(c.holding).map(esc).join("<br>");
+      const ov = c.manual_override_until > s.now ? `<div class="tiny muted">manual resume respected until ${when(c.manual_override_until)}</div>` : "";
+      return `<div style="margin:4px 0"><b>${esc(n)}</b> ${st}${why ? `<div class="tiny">${why}</div>` : ""}${ov}</div>`;
+    }).join("");
+    $("now").innerHTML = cons + `<div style="margin-top:8px"><span class="muted tiny">Busy on the GPU:</span> ${busy}</div>` + (s.errors.length ? `<div class="tiny" style="color:var(--bad)">${s.errors.map(esc).join("<br>")}</div>` : "");
+    if (!loaded) { cfg = await get("/api/config"); drawClasses(); drawSettings(); loaded = true; }
+    const ev = await get("/api/events");
+    $("events").innerHTML = ev.map(e => `<tr><td class="muted tiny" style="white-space:nowrap">${when(e.ts)}</td><td class="k-${e.kind}">${esc(e.kind.replace("_", " "))}</td><td>${esc(e.consumer)}</td><td>${esc(e.detail)}</td></tr>`).join("") || "<tr><td class='muted'>Nothing decided yet.</td></tr>";
+  } catch (x) { $("top").textContent = "no answer"; }
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>
