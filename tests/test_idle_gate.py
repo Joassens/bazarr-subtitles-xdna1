@@ -53,11 +53,34 @@ class Upstream:
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
 
 
-def start_gate(upstream_port, idle_s, hold_s):
+class GpuAgent:
+    """Stands in for tools/hostmem_agent.py: reports whatever `busy` is set to."""
+    def __init__(self):
+        self.busy = 0
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):                              # noqa: N802
+                raw = json.dumps({"gpu_busy_pct": outer.busy, "gpu_busy_max_10s": outer.busy}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}/"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+
+def start_gate(upstream_port, idle_s, hold_s, gpu_url="", gpu_grace_s=0.5):
     class A:
         pass
     a = A()
     a.upstream, a.idle_s, a.hold_max_s, a.poll_s, a.timeout_s, a.busy_url = f"http://127.0.0.1:{upstream_port}", idle_s, hold_s, 0.2, 30, ""
+    a.gpu_url, a.gpu_busy_pct, a.gpu_grace_s = gpu_url, 15, gpu_grace_s
     st = idle_gate.State(a)
     st.last_other = time.time() - 1000                    # start open
     srv = ThreadingHTTPServer(("127.0.0.1", 0), idle_gate.make_handler(st))
@@ -113,6 +136,38 @@ class GateTest(unittest.TestCase):
         stop.set()
         t.join(timeout=5)
         self.assertFalse(st.open(), "another client's request must close the lane even while the gate is busy")
+
+    def test_a_busy_gpu_closes_the_lane_and_an_idle_one_opens_it(self):
+        up, gpu = Upstream(), GpuAgent()
+        st, port = start_gate(up.port, idle_s=1.0, hold_s=0.3, gpu_url=gpu.url)
+        time.sleep(0.6)
+        self.assertEqual(post(port), 200)                  # GPU idle: lane open
+        gpu.busy = 80                                      # something else (not through the gate) loads the GPU
+        time.sleep(1.5)                                    # past the gate's own grace period
+        self.assertFalse(st.open())
+        self.assertIn("GPU is busy", st.reason)
+        self.assertEqual(post(port), 503)
+        gpu.busy = 0
+        time.sleep(2.0)                                    # quiet for idle_s
+        self.assertEqual(post(port), 200)
+
+    def test_the_gates_own_gpu_load_does_not_close_the_lane(self):
+        up, gpu = Upstream(delay=0.3), GpuAgent()
+        st, port = start_gate(up.port, idle_s=1.0, hold_s=0.3, gpu_url=gpu.url, gpu_grace_s=1.5)
+        time.sleep(0.6)
+        gpu.busy = 90                                      # the load comes from the gate's own request
+        for _ in range(4):
+            self.assertEqual(post(port), 200)
+            time.sleep(0.2)
+        gpu.busy = 0
+        time.sleep(1.0)
+        self.assertTrue(st.open(), "GPU load right after our own request is ours, not someone else's")
+
+    def test_an_unreachable_gpu_agent_does_not_block(self):
+        up = Upstream()
+        st, port = start_gate(up.port, idle_s=1.0, hold_s=0.3, gpu_url="http://127.0.0.1:9/")
+        time.sleep(0.6)
+        self.assertEqual(post(port), 200)
 
     def test_other_endpoints_pass_straight_through(self):
         up = Upstream()

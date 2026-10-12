@@ -18,7 +18,7 @@ These services are meant for a trusted home or lab network. Please do not expose
   example) are shown and stored as typed, so do not put credentials into them.
 * The **idle gate** (`tools/idle_gate.py`) forwards requests to your LLM server without authentication: bind it to a
   LAN address. The bridge's `/busy` endpoint is open and returns job counts only.
-* The **resource guard agent** (`tools/hostmem_agent.py`) reads `/proc/meminfo` only, takes no input and has no
+* The **host agent** (`tools/hostmem_agent.py`) reads `/proc/meminfo` and the GPU's busy percentage only, takes no input and has no
   authentication: bind it to a LAN address.
 * Do not mount the config folder read-write into anything you do not trust: whoever can write `bridge.json` controls
   which URLs the bridge calls.

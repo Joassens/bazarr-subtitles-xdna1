@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Idle gate looks at the real GPU load
+- `tools/hostmem_agent.py` also reports the amdgpu busy percentage (`gpu_busy_pct`, `gpu_busy_max_10s`, `gpu_busy_avg_10s`).
+- `tools/idle_gate.py --gpu-url`: the low-priority lane stays closed only while the GPU is really busy (over `--gpu-busy-pct`,
+  default 15 %), not merely because a subtitle job runs somewhere. The gate's own GPU load is ignored. `--busy-url` is optional now.
+
 ### Packaging and documentation
 - **One stack**: `compose.yml` now starts the bridge and npusubs together (`docker compose up -d`); the bridge has its own
   `bridge/Dockerfile`. `docker compose up -d bridge` runs the bridge alone (no NPU).
