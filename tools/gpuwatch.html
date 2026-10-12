@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gpuwatch</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b1f24;--mute:#68717d;--line:#dde1e6;--acc:#2f6fed;--chip:#eef1f5}
+@media (prefers-color-scheme: dark){:root{--bg:#14171b;--card:#1c2025;--ink:#e6e9ed;--mute:#97a0ab;--line:#2b3138;--acc:#6b9bff;--chip:#262b32}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;padding:14px 16px 0}h1{font-size:18px;margin:0}
+main{padding:12px 16px 32px;display:grid;gap:14px;max-width:1100px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin:0 0 8px}
+.muted{color:var(--mute)}.tiny{font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.cls{border:1px solid var(--line);border-radius:8px;padding:8px 10px}.cls b{display:block;margin-bottom:4px}
+.row{display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0}.row span:first-child{width:52px;color:var(--mute)}
+.bar{flex:1;height:7px;background:var(--chip);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.row em{width:42px;text-align:right;font-style:normal}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:500}
+td.n,th.n{text-align:right}
+.tabs button,select{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:3px 9px;cursor:pointer}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+canvas{width:100%;height:190px;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.k-start{color:#1d9a5b}.k-stop{color:var(--mute)}.k-overlap_start,.k-overlap_end{color:#d9822b}
+</style>
+</head>
+<body>
+<header><h1>gpuwatch</h1><span id="top" class="muted tiny">connecting...</span></header>
+<main>
+  <section class="card"><h2>Now</h2><div id="now" class="grid"></div><div id="idle" class="muted tiny"></div></section>
+  <section class="card">
+    <h2>History <span class="tabs" id="range"></span></h2>
+    <canvas id="chart"></canvas><div id="legend" class="legend"></div>
+    <div class="muted tiny">Load per class (the busiest of graphics, compute, video), averaged per bar. The line is the whole GPU.</div>
+  </section>
+  <section class="card"><h2>Who used the GPU <select id="hours"><option value="1">1 h</option><option value="6">6 h</option><option value="24" selected>24 h</option><option value="168">7 days</option><option value="720">30 days</option></select></h2>
+    <table id="stats"></table><div id="gpu" class="muted tiny" style="margin-top:6px"></div></section>
+  <section class="card"><h2>At the same time</h2><table id="pairs"></table>
+    <div class="muted tiny">Seconds in which both classes kept the GPU busy: the pairs that would have to give way to each other.</div></section>
+  <section class="card"><h2>Events</h2><table id="events"></table></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const dur = s => s >= 3600 ? (s / 3600).toFixed(1) + " h" : s >= 60 ? Math.round(s / 60) + " min" : Math.round(s) + " s";
+const clock = ts => new Date(ts * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+const colors = {}; const palette = ["#2f6fed", "#e0803a", "#2fa36b", "#b455d6", "#d6534f", "#3aa9c9", "#a59b2e", "#7b8794"];
+const colorOf = c => colors[c] || (colors[c] = palette[Object.keys(colors).length % palette.length]);
+let minutes = +(localStorage.gwMinutes || 60);
+const ranges = [[15, "15 min"], [60, "1 h"], [360, "6 h"], [1440, "24 h"], [10080, "7 d"]];
+$("range").innerHTML = ranges.map(([m, l]) => `<button data-m="${m}" class="${m === minutes ? "on" : ""}">${l}</button>`).join(" ");
+$("range").onclick = e => { const m = e.target.dataset.m; if (!m) return; minutes = +m; localStorage.gwMinutes = m;
+  [...$("range").children].forEach(b => b.classList.toggle("on", +b.dataset.m === minutes)); history_(); };
+$("hours").onchange = () => stats();
+const get = async u => (await fetch(u)).json();
+
+function bar(label, v) { return `<div class="row"><span>${label}</span><div class="bar"><i style="width:${Math.min(100, v)}%"></i></div><em>${v}%</em></div>`; }
+async function now() {
+  try {
+    const d = await get("/api/now"), cs = Object.entries(d.classes);
+    $("top").textContent = `whole GPU ${d.gpu_busy == null ? "?" : d.gpu_busy + " %"} · up ${dur(d.uptime_s)}`;
+    $("now").innerHTML = cs.map(([c, e]) => `<div class="cls"><b><i class="legend" style="display:inline"><i style="background:${colorOf(c)}"></i></i>${esc(c)}</b>
+      ${bar("graphics", e.gfx)}${bar("compute", e.compute)}${bar("video", e.media)}
+      <div class="tiny muted">${Math.round(e.vram_mb + e.gtt_mb)} MB memory · ${e.procs.map(p => esc(p.comm) + " " + p.pid).join(", ")}</div></div>`).join("");
+    $("idle").textContent = cs.length ? "" : "Nothing holds the GPU right now.";
+  } catch (e) { $("top").textContent = "no answer"; }
+}
+async function history_() {
+  const d = await get("/api/history?minutes=" + minutes), cv = $("chart"), r = devicePixelRatio || 1;
+  cv.width = cv.clientWidth * r; cv.height = cv.clientHeight * r;
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, n = d.gpu.length, bw = W / n, css = getComputedStyle(document.body);
+  g.clearRect(0, 0, W, H); g.strokeStyle = css.getPropertyValue("--line"); g.fillStyle = css.getPropertyValue("--mute"); g.font = `${11 * r}px system-ui`;
+  for (const y of [0, 25, 50, 75, 100]) { const py = H - 14 * r - (H - 18 * r) * y / 100; g.beginPath(); g.moveTo(0, py); g.lineTo(W, py); g.stroke(); g.fillText(y + "%", 2, py - 2); }
+  const names = Object.keys(d.classes), top = new Array(n).fill(0), ph = v => (H - 18 * r) * v / 100;
+  for (const c of names) { g.fillStyle = colorOf(c);
+    d.classes[c].forEach((v, i) => { if (v > 0) { const h = ph(Math.min(v, 100 - top[i])); g.fillRect(i * bw, H - 14 * r - ph(top[i]) - h, Math.max(1, bw - 1), h); top[i] += v; } }); }
+  g.strokeStyle = css.getPropertyValue("--ink"); g.lineWidth = r; g.beginPath();
+  d.gpu.forEach((v, i) => { const x = i * bw + bw / 2, y = H - 14 * r - ph(v); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+  g.fillStyle = css.getPropertyValue("--mute");
+  for (const f of [0, .5, 1]) { const t = d.t0 + (n * d.bucket_s) * f; g.fillText(new Date(t * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}), Math.min(W - 40 * r, f * W), H - 2); }
+  $("legend").innerHTML = names.map(c => `<span><i style="background:${colorOf(c)}"></i>${esc(c)}</span>`).join("") || '<span class="muted">no GPU use recorded in this period</span>';
+}
+async function stats() {
+  const d = await get("/api/stats?hours=" + $("hours").value);
+  $("stats").innerHTML = "<tr><th>Class</th><th class='n'>Active</th><th class='n'>Avg load</th><th class='n'>Peak</th><th class='n'>Memory</th></tr>" +
+    d.classes.map(c => `<tr><td><i class="legend" style="display:inline"><i style="background:${colorOf(c.class)}"></i></i>${esc(c.class)}</td><td class="n">${dur(c.active_s)}</td><td class="n">${c.avg_load}%</td><td class="n">${c.peak_load}%</td><td class="n">${c.vram_mb + c.gtt_mb} MB</td></tr>`).join("");
+  $("gpu").textContent = `Observed ${dur(d.observed_s)}, whole GPU averaged ${d.gpu_avg_busy}%. GPU busy but no known class active: ${dur(d.unattributed_busy_s)}.`;
+  $("pairs").innerHTML = d.overlaps.length ? "<tr><th>Class</th><th>and</th><th class='n'>Together</th></tr>" +
+    d.overlaps.map(o => `<tr><td>${esc(o.a)}</td><td>${esc(o.b)}</td><td class="n">${dur(o.seconds)}</td></tr>`).join("") : "<tr><td class='muted'>No overlap recorded in this period.</td></tr>";
+}
+async function events() {
+  const d = await get("/api/events?limit=60");
+  const text = e => { const x = e.detail;
+    if (e.kind === "start") return `${esc(e.class)} started using the GPU (${x.load}%)`;
+    if (e.kind === "stop") return `${esc(e.class)} stopped after ${dur(x.seconds)} (avg ${x.avg}%, peak ${x.peak}%)`;
+    if (e.kind === "overlap_start") return `Overlap: ${x.classes.map(esc).join(" + ")} (GPU ${x.gpu_busy}%)`;
+    if (e.kind === "overlap_end") return `Overlap ended after ${dur(x.seconds)}: ${x.classes.map(esc).join(" + ")} (GPU peak ${x.gpu_busy_max}%)`;
+    return esc(e.kind); };
+  $("events").innerHTML = d.map(e => `<tr><td class="muted tiny" style="white-space:nowrap">${clock(e.ts)}</td><td class="k-${e.kind}">${text(e)}</td></tr>`).join("") || "<tr><td class='muted'>Nothing recorded yet.</td></tr>";
+}
+now(); history_(); stats(); events();
+setInterval(now, 2000); setInterval(() => { history_(); stats(); events(); }, 30000);
+addEventListener("resize", history_);
+</script>
+</body>
+</html>
