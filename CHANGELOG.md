@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### gpuwatch (new tool)
+- `tools/gpuwatch.py` + `gpuwatch.html`: read-only service that shows which container/process uses the AMD GPU (per-client
+  fdinfo counters), with a live page, a history in SQLite (load per class, sessions, overlaps, unexplained GPU load), JSON
+  and Prometheus metrics. See [docs/gpuwatch.md](docs/gpuwatch.md).
+
 ### Idle gate looks at the real GPU load
 - `tools/hostmem_agent.py` also reports the amdgpu busy percentage (`gpu_busy_pct`, `gpu_busy_max_10s`, `gpu_busy_avg_10s`).
 - `tools/idle_gate.py --gpu-url`: the low-priority lane stays closed only while the GPU is really busy (over `--gpu-busy-pct`,
