@@ -6,16 +6,20 @@ Point a background client (for example Lingarr) at this gate instead of the LLM 
 then forwarded. Everything else (model lists, health) passes straight through. Other clients keep talking to the LLM
 server directly and never wait for the gate.
 
-"Nobody else" is judged from three signals, polled every `--poll-s`:
+"Nobody else" is judged from these signals, polled every `--poll-s`:
   * the server's request counter went up by more than the gate itself forwarded (someone else sent a request),
   * a model reports `is_busy` / `is_streaming` while the gate has nothing in flight,
+  * (optional) `--gpu-url` answers the GPU's real load (tools/hostmem_agent.py, the amdgpu busy percentage amdgpu_top shows):
+    while the gate has nothing in flight, a GPU busier than `--gpu-busy-pct` over the last 10 s means something else is
+    using it (another LLM, a game, a transcode) and the lane stays closed. If the agent does not answer, this signal is skipped,
   * (optional) `--busy-url` answers {"active": n} with n > 0, for example the bridge's `/busy`: a subtitle job that is
-    still transcribing will need the LLM soon, so the lane stays closed.
+    still transcribing will need the LLM soon, so the lane stays closed. Not needed with `--gpu-url`: a transcription on
+    the NPU leaves the GPU alone, and a translation shows up as GPU load.
 
 A request that waits longer than `--hold-max-s` gets `503` with `Retry-After`; the client retries later.
 `GET /gate/status` shows what the gate sees. Python standard library only; no authentication: bind it to a LAN address.
 
-    python3 idle_gate.py --listen <ip>:13306 --upstream http://127.0.0.1:13305 --busy-url http://127.0.0.1:9500/busy
+    python3 idle_gate.py --listen <ip>:13306 --upstream http://127.0.0.1:13305 --gpu-url http://<host-ip>:9600/
 """
 import argparse
 import http.client
@@ -40,7 +44,9 @@ class State:
         self._suspect = None                     # since when the server's counter is ahead of what the gate explains
         self.last_other = 0.0                    # last time someone else was seen using the LLM
         self.reason = "starting"
-        self._base = None                        # request counter at the start, minus what the gate forwarded
+        self.last_own_done = 0.0                 # when the gate's own last request finished (its GPU load lingers in the 10 s window)
+        self.gpu = None                          # last GPU reading from --gpu-url
+        self._base = None                       # request counter at the start, minus what the gate forwarded
 
     def get_json(self, url, timeout=3):
         try:
@@ -75,6 +81,16 @@ class State:
         if health and not inflight:
             if any(m.get("is_busy") or m.get("is_streaming") for m in health.get("all_models_loaded", [])):
                 self.last_other, self.reason = now, "the LLM is busy"
+        gpu_url = getattr(a, "gpu_url", "")
+        if gpu_url:
+            g = self.get_json(gpu_url)
+            self.gpu = g
+            with self.lock:
+                own_done = self.last_own_done
+            # Only judge the GPU when none of the gate's own requests is running or has just ended: that load is ours.
+            if g and "gpu_busy_max_10s" in g and not inflight and now - own_done >= getattr(a, "gpu_grace_s", 12):
+                if g["gpu_busy_max_10s"] >= getattr(a, "gpu_busy_pct", 15):
+                    self.last_other, self.reason = now, f"the GPU is busy ({g['gpu_busy_max_10s']} %)"
         if a.busy_url:
             b = self.get_json(a.busy_url)
             if b and (b.get("active") or b.get("waiting")):
@@ -165,13 +181,14 @@ def make_handler(st: State):
                     with st.lock:
                         st.inflight -= 1
                         st.completed += 1
+                        st.last_own_done = time.time()
 
         def do_GET(self):                        # noqa: N802
             if self.path.split("?")[0] == "/gate/status":
                 with st.lock:
                     return self._send(200, {"open": st.open(), "idle_for_s": round(st.idle_for()), "idle_needed_s": a.idle_s,
                                             "last_reason": st.reason, "waiting": st.waiting, "in_flight": st.inflight,
-                                            "forwarded": st.forwarded})
+                                            "forwarded": st.forwarded, "gpu": st.gpu})
             self._forward()
 
         def do_POST(self):                       # noqa: N802
@@ -192,6 +209,9 @@ def main():
     ap.add_argument("--poll-s", type=float, default=2)
     ap.add_argument("--timeout-s", type=float, default=900, help="upstream timeout of a forwarded request")
     ap.add_argument("--busy-url", default="", help="optional JSON endpoint answering {\"active\": n}")
+    ap.add_argument("--gpu-url", default="", help="optional hostmem_agent URL: the lane stays closed while the GPU is really busy")
+    ap.add_argument("--gpu-busy-pct", type=float, default=15, help="GPU load (max over 10 s) from which the GPU counts as busy")
+    ap.add_argument("--gpu-grace-s", type=float, default=12, help="seconds after the gate's own request before the GPU is judged again")
     a = ap.parse_args()
     st = State(a)
     st.last_other = time.time()                  # start closed: wait one idle period before the first request
@@ -217,7 +237,7 @@ if __name__ == "__main__":
 # Description=Idle gate: low-priority lane to the LLM server
 # After=network-online.target
 # [Service]
-# ExecStart=/usr/bin/python3 /opt/idle-gate/idle_gate.py --listen <lan-ip>:13306 --upstream http://127.0.0.1:13305 --idle-s 600 --hold-max-s 3300
+# ExecStart=/usr/bin/python3 /opt/idle-gate/idle_gate.py --listen <lan-ip>:13306 --upstream http://127.0.0.1:13305 --gpu-url http://<host-ip>:9600/ --idle-s 600 --hold-max-s 3300
 # DynamicUser=yes
 # ProtectSystem=strict
 # ProtectHome=yes

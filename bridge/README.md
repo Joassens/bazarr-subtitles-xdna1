@@ -50,8 +50,9 @@ Mount the `ui/` folder next to `bridge.py` (`./ui:/app/ui:ro`, see the compose e
 * **Low-priority lane for other LLM clients** ([../tools/idle_gate.py](../tools/idle_gate.py)): a background client such
   as Lingarr should not compete with Home Assistant or a subtitle job for the GPU. Point it at the gate instead of the
   LLM server and its generation requests are held until nobody else has used the LLM for a while (default 10 minutes:
-  another client's request, a busy model, or a running bridge job, which the bridge reports on `GET /busy`, counts
-  only). The client sees a slow answer, not an error, as long as it tolerates a long wait (Lingarr does). Everyone else
+  another client's request, a busy model, or, measured by the host agent (`--gpu-url`, the amdgpu busy percentage that
+  amdgpu_top shows), a GPU that is really busy; `--busy-url` can add the bridge's `GET /busy`, but a transcription on
+  the NPU does not need it). The client sees a slow answer, not an error, as long as it tolerates a long wait (Lingarr does). Everyone else
   keeps using the LLM server directly and never waits. `GET /gate/status` on the gate shows what it sees. Run it as a
   service (see the comment in the file) and set the client's endpoint to the gate's address.
 * **Profiles**: settings that apply only to some files (a path pattern and/or a language). Create, edit and delete them
