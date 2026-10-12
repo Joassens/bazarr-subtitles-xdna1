@@ -1,11 +1,34 @@
-# The NPU shows up as /dev/accel/accel0, group `render`:
+# Two services, one stack:
+#
+#   Bazarr ──> bridge (:9500) ──> npusubs (:9091, speech to text on the NPU)
+#                  └──> your LLM (translation; set its URL in the web UI)
+#
+#   docker compose up -d              everything (needs the AMD XDNA1 NPU)
+#   docker compose up -d bridge       only the bridge (no NPU: point it at another whisper-asr-webservice, see README)
+#
+# NPU: it shows up as /dev/accel/accel0, group `render`:
 #   RENDER_GID=$(getent group render | cut -d: -f3) docker compose up -d
+# XRT locks its device buffers, so npusubs needs IPC_LOCK and an unbounded memlock.
 #
-# XRT locks its device buffers, so the container needs IPC_LOCK and an unbounded memlock.
-#
-# Settings live in ./config/npusubs.json (see config.example/); the variables below are optional overrides and
-# win over the file when they are set to a non-empty value. Leave them empty to manage everything from the file.
+# Settings live in ./config (copy config.example/ to ./config first); both services read it and the web UI edits it.
+# The variables below are optional overrides and win over the files when set to a non-empty value.
 services:
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    image: npusubs-bridge:latest
+    container_name: whisperbridge
+    ports:
+      # This is the address for Bazarr's Whisper provider, and for the web UI at /ui.
+      # No TLS: keep it on your home network. Set BRIDGE_BIND=0.0.0.0 (or a LAN IP) to let other machines reach it.
+      - "${BRIDGE_BIND:-0.0.0.0}:${BRIDGE_PORT:-9500}:9000"
+    environment:
+      OPENAI_API_KEY: "not-needed"      # the OpenAI client library insists on one; the real settings are in config/bridge.json
+    volumes:
+      - ${NPUSUBS_CONFIG_DIR:-./config}:/config   # read-write: the web UI stores its password and your changes here
+    restart: unless-stopped
+
   npusubs:
     build:
       context: .
@@ -23,10 +46,11 @@ services:
     ulimits:
       memlock: -1
     ports:
-      # 127.0.0.1 only by default: there is no authentication. Set NPUSUBS_BIND=0.0.0.0 (or a LAN IP) to expose it.
+      # 127.0.0.1 only by default: there is no authentication, and the bridge reaches it over the compose network.
+      # Set NPUSUBS_BIND=0.0.0.0 (or a LAN IP) only if something else must talk to it directly.
       - "${NPUSUBS_BIND:-127.0.0.1}:${NPUSUBS_PORT:-9091}:9091"
     environment:
-      HF_TOKEN: "${HF_TOKEN:-}"          # or put HF_TOKEN=... in config/secrets.env
+      HF_TOKEN: "${HF_TOKEN:-}"          # or put HF_TOKEN=... in config/secrets.env (see docs/huggingface.md)
       NPUSUBS_MODEL: "${NPUSUBS_MODEL:-}"
       NPUSUBS_THREADS: "${NPUSUBS_THREADS:-}"
       NPUSUBS_BEAM: "${NPUSUBS_BEAM:-}"
@@ -37,10 +61,10 @@ services:
       NPUSUBS_DIARIZE_PARALLEL: "${NPUSUBS_DIARIZE_PARALLEL:-}"
       NPUSUBS_SPEAKER_STYLE: "${NPUSUBS_SPEAKER_STYLE:-}"
     volumes:
-      - ${NPUSUBS_CONFIG_DIR:-./config}:/config:ro   # settings, schemas, secrets.env (read-only for the service)
+      - ${NPUSUBS_CONFIG_DIR:-./config}:/config:ro   # settings, schemas, secrets.env (read-only for this service)
       - aot:/opt/npu-whisper/aot            # compiled NPU overlays (minutes to build, so keep them)
       - whisper:/root/.cache/whisper        # Whisper checkpoint (~1.6 GB)
-      - hf:/root/.cache/huggingface         # pyannote models
+      - hf:/root/.cache/huggingface         # speaker models
     restart: unless-stopped
 
 volumes:
