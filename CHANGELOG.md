@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Packaging and documentation
+- **One stack**: `compose.yml` now starts the bridge and npusubs together (`docker compose up -d`); the bridge has its own
+  `bridge/Dockerfile`. `docker compose up -d bridge` runs the bridge alone (no NPU).
+- `config.example/bridge.json` points the bridge at the `npusubs` service by default.
+- README: how the pieces fit (diagram and table), what you need for which use, a "No NPU?" path, Bazarr points at the bridge.
+- `docs/huggingface.md`: when a Hugging Face account is needed (only the pyannote engine), how to accept the licence and make a token.
+
 ## 0.1.0 (first release)
 
 ### Web UI and configuration (bridge)

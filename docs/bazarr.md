@@ -1,12 +1,20 @@
 # Using npusubs with Bazarr
 
-## Direct (same language as the audio)
+## Recommended: through the bridge
 
 Bazarr → Settings → Providers → **Whisper** (the `whisperai` provider):
 
-* Endpoint: `http://<host>:9091`
-* Response timeout / transcription timeout: generous (a film takes a while on an NPU; a 24 minute episode takes
-  about 6-8 minutes). Bazarr's defaults are too short for films.
+* Endpoint: `http://<host>:9500` (the bridge; it passes the audio on to npusubs and translates with your LLM when asked)
+* Response timeout / transcription timeout: generous. On the NPU a 24 minute episode takes about 6-8 minutes with greedy
+  decoding, 30-40 minutes with beam search and speaker recognition; set hours, not minutes.
+* For a library with several languages, make a Bazarr **language profile** (Settings → Languages), for example "Anime JP > EN"
+  with the original language (audio only) and the language you want, and attach the series to it.
+
+## Direct to npusubs (no translation, no web UI)
+
+Same provider, but with the endpoint `http://<host>:9091`. Use this when you only want subtitles in the audio's own language.
+
+* Same timeout advice as above.
 * Enable "Pass video filename to Whisper" if you want to keep it.
 
 Bazarr sends raw 16 kHz mono PCM with `encode=false`; npusubs accepts that, and `output=srt`.

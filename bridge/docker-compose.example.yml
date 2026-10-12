@@ -1,4 +1,6 @@
-# Example only: replace the placeholders. Keep real API keys out of git (use config/secrets.env).
+# Example only: the bridge on its own, for when npusubs runs on another machine (or you use another speech service).
+# For the normal case (bridge + npusubs together) use ../compose.yml: `docker compose up -d` in the repository root, which
+# builds the bridge from bridge/Dockerfile. Keep real API keys out of git (use config/secrets.env).
 services:
   whisperbridge:
     image: mccloud/bazarr-openai-whisperbridge     # the upstream image provides the Python environment

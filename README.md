@@ -35,7 +35,9 @@ subtitle translation) running at the same time.
 * Docker. About 12 GB for the image, 8-9 GiB RAM while running.
 * First start downloads the Whisper checkpoint (~1.6 GB) and compiles the NPU overlays (minutes, then cached).
 
-## Overview
+## How the pieces fit
+
+This repository is **one stack of two services** that start together with one `docker compose up`:
 
 ```
  Bazarr ──> bridge (:9500) ──> npusubs (:9091)   speech to text on the NPU (or any whisper-asr-webservice)
@@ -47,10 +49,26 @@ subtitle translation) running at the same time.
                         └── config/ (JSON + secrets.env + history/)   read by the bridge and by npusubs, hot reloaded
 ```
 
-The speech service works with Bazarr on its own. The **bridge** adds failover between speech services, translation
-with a scene bible and a review pass, and the web UI.
+| Piece | Folder | What it does | Who talks to it |
+|---|---|---|---|
+| **bridge** | [`bridge/`](bridge/README.md) | The address you give Bazarr. Hands the audio to a speech service, translates with your LLM (scene bible + review pass), per-show profiles, the web UI. | Bazarr, you (browser) |
+| **npusubs** | [`npusubs/`](npusubs/) | The speech engine: Whisper large-v3-turbo with the encoder on the NPU, silence/music handling, speaker recognition, subtitle formatting. | the bridge |
+| **your LLM** | (not included) | Any OpenAI-compatible server, for example [Lemonade](https://github.com/lemonade-sdk/lemonade) or llama.cpp. Only needed for translation. | the bridge |
 
-## Bridge and web UI (optional)
+Bazarr only ever talks to the **bridge**. They are two containers on purpose: npusubs needs the NPU driver and a heavy
+Python environment, the bridge is light and works with any `whisper-asr-webservice` too, and you can restart or update the
+bridge without interrupting a transcription that is running.
+
+**What you need, depending on what you want:**
+
+| I want | Run | Also needed |
+|---|---|---|
+| Everything (an XDNA1 NPU machine) | `docker compose up -d` | nothing else; an LLM URL for translation |
+| Only subtitles in the audio's own language, no web UI | `docker compose up -d npusubs`, Bazarr → `:9091` (works without the bridge) | |
+| Translation + web UI, **no NPU** | `docker compose up -d bridge` and point it at another speech service | see [No NPU?](#no-npu) |
+| Best speaker recognition | | a free Hugging Face account that accepted a licence: [docs/huggingface.md](docs/huggingface.md) |
+
+## Bridge and web UI
 
 [`bridge/`](bridge/README.md) holds a modified copy of McCloudS/bazarr-openai-whisperbridge (Apache-2.0): several
 speech backends with failover, LLM translation with a scene "bible" and a conservative review pass, and
@@ -76,24 +94,45 @@ user `admin`), so there is nothing to set up beforehand. It needs the config fol
 git clone https://github.com/drakosha/whisper-xdna && cd whisper-xdna
 docker build --build-arg WITH_REFERENCE=1 -t npu-whisper:latest .
 
-# 2. build and start npusubs
-cd ../npusubs
-RENDER_GID=$(getent group render | cut -d: -f3) docker compose up -d
-curl localhost:9091/health            # status: ok
+# 2. get this repository and a config folder
+git clone https://github.com/Joassens/bazarr-subtitles-xdna1 && cd bazarr-subtitles-xdna1
+cp -r config.example config
+cp config/secrets.env.example config/secrets.env && chmod 600 config/secrets.env
 
-# 3. transcribe
-curl -F audio_file=@episode.mkv "localhost:9091/asr?language=ja&output=srt" > episode.ja.srt
+# 3. build and start the whole stack (bridge + npusubs)
+RENDER_GID=$(getent group render | cut -d: -f3) docker compose up -d
+curl localhost:9091/health            # status: ok   (npusubs)
 ```
 
-The container needs `IPC_LOCK` and an unlimited `memlock` (XRT locks its device buffers). Inside an LXC
+4. **Open `http://<host>:9500/ui`** and choose a password (the first visit asks for it; see
+   [docs/web-ui-getting-started.md](docs/web-ui-getting-started.md)). Under *Configuration* fill in `llm.primary_url`
+   (your OpenAI-compatible LLM, ending in `/v1`) and the translation model if you want translated subtitles.
+5. **In Bazarr** → Settings → Providers → Whisper: endpoint `http://<host>:9500` (see below).
+
+Try the speech engine on its own, without Bazarr:
+`curl -F audio_file=@episode.mkv "localhost:9091/asr?language=ja&output=srt" > episode.ja.srt`
+
+The npusubs container needs `IPC_LOCK` and an unlimited `memlock` (XRT locks its device buffers). Inside an LXC
 container Docker may refuse `memlock: -1`; raise the hard limit of `containerd`/`dockerd` from the host
 (`prlimit --pid <pid> --memlock=unlimited:unlimited`) or set `lxc.prlimit.memlock: unlimited`.
 
+Speaker recognition with the best engine needs a Hugging Face account: [docs/huggingface.md](docs/huggingface.md). Everything
+else works without one.
+
+### No NPU?
+
+The bridge does not need the NPU. Start only the bridge, `docker compose up -d bridge`, then in the web UI (*Configuration* →
+`backends.speech_urls`) replace `http://npusubs:9091` with any `whisper-asr-webservice` you have (faster-whisper on a GPU, for
+example). You keep the translation pipeline, profiles and web UI. npusubs itself is specific to the XDNA1 NPU.
+
 ## Using it with Bazarr
 
-Bazarr's **Whisper** provider talks `whisper-asr-webservice`, which this service implements.
-Point it at `http://<host>:9091` (it sends raw PCM with `encode=false`, which is supported).
-See [docs/bazarr.md](docs/bazarr.md), including how to combine it with a bridge that translates to other languages.
+Bazarr's **Whisper** provider (`whisperai`) talks `whisper-asr-webservice`. Point it at the **bridge**,
+`http://<host>:9500`, and give it a generous timeout (a 24 minute episode takes 30-40 minutes with beam search and
+speaker recognition; set the response/transcription timeouts to hours). The bridge then calls npusubs and, for
+"translate" requests, your LLM. npusubs also speaks that API itself (`http://<host>:9091`), so Bazarr can use it
+directly when you do not need translation or the web UI.
+See [docs/bazarr.md](docs/bazarr.md).
 
 ## Configuration
 
@@ -137,9 +176,12 @@ WeSpeaker and pyannote).
 
 #### pyannote engine
 
-Uses [pyannote.audio](https://github.com/pyannote/pyannote-audio). You need a Hugging Face token and to accept
-the terms of the gated model once: <https://huggingface.co/pyannote/speaker-diarization-community-1>.
-Then set `HF_TOKEN` and `NPUSUBS_DIARIZE=1` (or send `diarize=true` per request). It runs on the CPU, after the transcription of the same request. **Never commit your token.**
+Uses [pyannote.audio](https://github.com/pyannote/pyannote-audio). The model is **gated**, so this engine needs a **free
+Hugging Face account** that has accepted the model's licence terms once
+(<https://huggingface.co/pyannote/speaker-diarization-community-1>) and a read token; the step-by-step is in
+[docs/huggingface.md](docs/huggingface.md). Put the token in `config/secrets.env` as `HF_TOKEN`, then set
+`NPUSUBS_DIARIZE=1` (or send `diarize=true` per request). It runs on the CPU, after the transcription of the same request.
+**Never commit your token.** No account? Use the `embedding` engine.
 
 ## Measured (Ryzen 7 8845HS, 16 threads, large-v3-turbo)
 

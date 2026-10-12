@@ -5,8 +5,9 @@ configure anything: the first time you open it, it asks you to choose the passwo
 
 ## What you need
 
-* The bridge running with the `ui/` folder and `subcfg.py` mounted, and your **config folder** mounted **read-write**
-  (see [bridge/docker-compose.example.yml](../bridge/docker-compose.example.yml): `../config:/config`, without `:ro`).
+* The bridge running (`docker compose up -d` in the repository root; [compose.yml](../compose.yml) already has the web UI in the
+  image and mounts your **config folder** read-write as `/config`, without `:ro`). Running the bridge on its own with
+  [bridge/docker-compose.example.yml](../bridge/docker-compose.example.yml) works too.
   The password is stored in that folder, so the bridge must be able to write there.
 * A config folder. If you do not have one yet: copy [config.example](../config.example/README.md) to `config`.
 
