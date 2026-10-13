@@ -36,11 +36,16 @@ mkdir -p /opt/gpuarbiter && cp tools/gpuarbiter.py tools/gpuarbiter.html /opt/gp
 python3 /opt/gpuarbiter/gpuarbiter.py --config /etc/gpuarbiter/config.json --bind <host-ip> --port 9620 --db /var/lib/gpuarbiter/events.db
 ```
 
-A systemd unit is in the comment at the bottom of the script. Open `http://<host-ip>:9620/`: what is busy, the state of each consumer, the priority
-table and thresholds (editable, saved with a copy of the previous version in `history/`), and the log of decisions. A missing config file means the
-defaults, which start in **dry-run mode** with example classes. Class names must match what gpuwatch shows.
+A systemd unit is in the comment at the bottom of the script. The page shows what is busy, the state of each consumer, the priority table and
+thresholds (editable, saved with a copy of the previous version in `history/`), and the log of decisions. A missing config file means the defaults,
+which start in **dry-run mode** with example classes. Class names must match what gpuwatch shows.
 
-No authentication: bind it to a trusted network. Changing the configuration needs the `X-Requested-With: arbiter` header (the page sends it), which
+**One place for both:** run the arbiter on `127.0.0.1` and start gpuwatch with `--arbiter-url http://127.0.0.1:9620`. gpuwatch then passes the arbiter's
+page and API through under `/arbiter/` and shows it as a **Priorities** tab next to its own **Usage** tab (`http://<host-ip>:9610/#priorities`); the
+arbiter itself is then not reachable from the network and can run as an unprivileged user. Only five fixed paths are forwarded.
+The arbiter can also be opened on its own port (`--bind <ip>`).
+
+No authentication: bind to a trusted network. Changing the configuration needs the `X-Requested-With: arbiter` header (the page sends it), which
 keeps a stray cross-site request from changing it.
 
 ## Config

@@ -27,7 +27,7 @@ label.f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--mu
 </style>
 </head>
 <body>
-<header><h1>gpuarbiter</h1><span id="top" class="muted tiny">connecting...</span></header>
+<header><h1 id="title">gpuarbiter</h1><span id="top" class="muted tiny">connecting...</span></header>
 <main>
   <section class="card"><h2>Now</h2><div id="now"></div></section>
   <section class="card">
@@ -45,6 +45,7 @@ label.f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--mu
 </main>
 <script>
 const $ = id => document.getElementById(id);
+if (window.self !== window.top) $("title").hidden = true;   // shown as a tab of gpuwatch: it has its own title
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const ENGINES = ["gfx", "compute", "media", "dma"];
 const when = ts => new Date(ts * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"});
@@ -80,15 +81,15 @@ document.addEventListener("click", e => {
 });
 $("add").onclick = () => { cfg.classes.push({name: "", priority: 5, engines: []}); drawClasses(); };
 $("save").onclick = async () => {
-  const r = await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "arbiter"}, body: JSON.stringify(cfg)});
+  const r = await fetch("api/config", {method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "arbiter"}, body: JSON.stringify(cfg)});
   const j = await r.json();
   $("msg").textContent = r.ok ? "saved" : (j.problems || [j.error]).join("; ");
   $("msg").style.color = r.ok ? "var(--ok)" : "var(--bad)";
 };
 async function refresh() {
   try {
-    const s = await get("/api/state");
-    $("top").innerHTML = `${s.dry_run ? '<span class="chip warn">dry run: only logging</span>' : '<span class="chip ok">live</span>'} last poll ${Math.round(s.now - s.last_poll)} s ago · host RAM ${s.ram_gb == null ? "?" : s.ram_gb.toFixed(1) + " GB free"}`;
+    const s = await get("api/state");
+    $("top").innerHTML = `${s.dry_run ? '<span class="chip warn">dry run: only logging</span>' : '<span class="chip ok">live</span>'} last poll ${Math.round(s.now - s.last_poll)} s ago Â· host RAM ${s.ram_gb == null ? "?" : s.ram_gb.toFixed(1) + " GB free"}`;
     const busy = Object.entries(s.busy_classes).map(([n, v]) => `<span class="chip">${esc(n)}: ${ENGINES.filter(e => v[e] >= 0.5).map(e => e + " " + v[e] + "%").join(", ")}</span>`).join(" ") || '<span class="muted">nothing is busy on the GPU</span>';
     const cons = Object.entries(s.consumers).map(([n, c]) => {
       const st = c.paused === null ? "unknown" : c.paused ? (c.paused_by_arbiter ? '<span class="chip warn">paused by the arbiter</span>' : '<span class="chip">paused by hand</span>') : '<span class="chip ok">running</span>';
@@ -97,8 +98,8 @@ async function refresh() {
       return `<div style="margin:4px 0"><b>${esc(n)}</b> ${st}${why ? `<div class="tiny">${why}</div>` : ""}${ov}</div>`;
     }).join("");
     $("now").innerHTML = cons + `<div style="margin-top:8px"><span class="muted tiny">Busy on the GPU:</span> ${busy}</div>` + (s.errors.length ? `<div class="tiny" style="color:var(--bad)">${s.errors.map(esc).join("<br>")}</div>` : "");
-    if (!loaded) { cfg = await get("/api/config"); drawClasses(); drawSettings(); loaded = true; }
-    const ev = await get("/api/events");
+    if (!loaded) { cfg = await get("api/config"); drawClasses(); drawSettings(); loaded = true; }
+    const ev = await get("api/events");
     $("events").innerHTML = ev.map(e => `<tr><td class="muted tiny" style="white-space:nowrap">${when(e.ts)}</td><td class="k-${e.kind}">${esc(e.kind.replace("_", " "))}</td><td>${esc(e.consumer)}</td><td>${esc(e.detail)}</td></tr>`).join("") || "<tr><td class='muted'>Nothing decided yet.</td></tr>";
   } catch (x) { $("top").textContent = "no answer"; }
 }

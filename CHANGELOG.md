@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### gpuwatch: Priorities tab
+- `gpuwatch --arbiter-url`: passes the gpuarbiter's page and API through under `/arbiter/`; the page shows it as a **Priorities** tab. The arbiter can then
+  listen on localhost only.
+
 ### gpuarbiter (new tool)
 - `tools/gpuarbiter.py` + `gpuarbiter.html`: pauses a Tdarr node while a higher-priority class (for example a media server) uses the same GPU
   engine, or when host RAM is low, and resumes it after a quiet period. Per-engine priorities, dry-run mode, a log of every decision, an editable

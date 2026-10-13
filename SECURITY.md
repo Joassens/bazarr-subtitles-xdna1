@@ -20,7 +20,8 @@ These services are meant for a trusted home or lab network. Please do not expose
   LAN address. The bridge's `/busy` endpoint is open and returns job counts only.
 * **gpuwatch** (`tools/gpuwatch.py`) runs as root (it reads other containers' `/proc` entries) but only reads, writes only its own
   database, takes no input beyond query numbers and has no authentication: bind it to a LAN address. The page shows process
-  names and command lines.
+  names and command lines. With `--arbiter-url` it also forwards five fixed paths (including saving the arbiter's configuration) to
+  that one address; it adds no way to reach anything else.
 * **gpuarbiter** (`tools/gpuarbiter.py`) can pause and resume a Tdarr server's nodes (through its unauthenticated API). It has no authentication
   itself: bind it to a LAN address. Config changes need an `X-Requested-With` header.
 * The **host agent** (`tools/hostmem_agent.py`) reads `/proc/meminfo` and the GPU's busy percentage only, takes no input and has no
