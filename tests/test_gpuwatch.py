@@ -168,5 +168,89 @@ class ServerTest(unittest.TestCase):
         srv.server_close()
 
 
+class ArbiterTabTest(unittest.TestCase):
+    """gpuwatch passes a few fixed paths through to a gpuarbiter so its page can show it as a tab."""
+
+    def serve(self, handler):
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        return f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def setUp(self):
+        seen = self.seen = []
+        from http.server import BaseHTTPRequestHandler
+
+        class Fake(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _reply(self, code, body, ctype="application/json"):
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):                              # noqa: N802
+                seen.append(("GET", self.path))
+                if self.path == "/":
+                    return self._reply(200, b"<html>arbiter page</html>", "text/html")
+                self._reply(200, json.dumps({"path": self.path}).encode())
+
+            def do_POST(self):                             # noqa: N802
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                seen.append(("POST", self.path, self.headers.get("X-Requested-With"), body))
+                self._reply(422 if b"bad" in body else 200, json.dumps({"ok": b"bad" not in body}).encode())
+
+        self.upstream = self.serve(Fake)
+        st = gpuwatch.State(None, gpuwatch.Recorder(":memory:"), 2)
+        self.base = self.serve(gpuwatch.make_handler(st, b"<html>gpuwatch</html>", self.upstream))
+        self.plain = self.serve(gpuwatch.make_handler(st, b"<html>gpuwatch</html>"))
+
+    def get(self, base, path):
+        try:
+            with urllib.request.urlopen(base + path, timeout=10) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read()
+
+    def test_the_arbiter_page_and_api_are_passed_through(self):
+        self.assertEqual(self.get(self.base, "/arbiter/"), (200, b"<html>arbiter page</html>"))
+        code, body = self.get(self.base, "/arbiter/api/state")
+        self.assertEqual((code, json.loads(body)), (200, {"path": "/api/state"}))
+        self.assertIn(b"gpuwatch", self.get(self.base, "/")[1], "the normal page is untouched")
+
+    def test_saving_the_config_is_forwarded_with_its_header_and_the_status_comes_back(self):
+        def post(body):
+            req = urllib.request.Request(self.base + "/arbiter/api/config", data=body, method="POST", headers={"X-Requested-With": "arbiter", "Content-Type": "application/json"})
+            try:
+                return urllib.request.urlopen(req, timeout=10).status
+            except urllib.error.HTTPError as exc:
+                return exc.code
+        self.assertEqual(post(b'{"hold_s": 5}'), 200)
+        self.assertEqual(post(b'{"bad": 1}'), 422)
+        self.assertEqual(self.seen[0][:3], ("POST", "/api/config", "arbiter"))
+
+    def test_only_the_fixed_paths_are_forwarded(self):
+        self.assertEqual(self.get(self.base, "/arbiter/api/secret")[0], 404)
+        self.assertEqual(self.get(self.base, "/arbiter/../../etc/passwd")[0], 404)
+        self.assertEqual(self.get(self.plain, "/arbiter/api/state")[0], 404, "without --arbiter-url nothing is forwarded")
+        self.assertEqual([s for s in self.seen if s[1] not in ("/", "/api/state", "/api/config")], [])
+
+    def test_a_missing_arbiter_gives_502_not_a_crash(self):
+        st = gpuwatch.State(None, gpuwatch.Recorder(":memory:"), 2)
+        dead = self.serve(gpuwatch.make_handler(st, b"x", "http://127.0.0.1:9"))
+        self.assertEqual(self.get(dead, "/arbiter/api/state")[0], 502)
+
+    def test_the_bare_path_redirects(self):
+        import http.client
+        host, port = self.base.rsplit(":", 1)
+        conn = http.client.HTTPConnection("127.0.0.1", int(port), timeout=10)
+        conn.request("GET", "/arbiter")
+        r = conn.getresponse()
+        self.assertEqual((r.status, r.getheader("Location")), (302, "/arbiter/"))
+
+
 if __name__ == "__main__":
     unittest.main()

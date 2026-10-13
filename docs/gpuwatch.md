@@ -28,6 +28,9 @@ python3 /opt/gpuwatch/gpuwatch.py --bind <host-ip> --port 9610 --db /var/lib/gpu
 A systemd unit is in the comment at the bottom of `gpuwatch.py`. Open `http://<host-ip>:9610/`: live view, history chart,
 a table of who used the GPU, which pairs overlapped, and the event log. No authentication: bind it to a LAN address.
 
+With `--arbiter-url http://127.0.0.1:9620` the page gets a second tab, **Priorities**, which is the [gpuarbiter](gpuarbiter.md) (who yields to whom,
+and a log of its decisions). gpuwatch itself stays read-only: it only passes a few fixed paths through to the arbiter.
+
 ## Name your classes
 
 The built-in rules fit one particular host (container ids 114, 117, 104). Give your own with `--rules rules.json`:

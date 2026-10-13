@@ -25,11 +25,16 @@ td.n,th.n{text-align:right}
 canvas{width:100%;height:190px;display:block}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
 .k-start{color:#1d9a5b}.k-stop{color:var(--mute)}.k-overlap_start,.k-overlap_end{color:#d9822b}
+#prio{max-width:1100px;margin:0 auto}#prioframe{display:block;width:100%;border:0;min-height:600px;background:transparent}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
-<header><h1>gpuwatch</h1><span id="top" class="muted tiny">connecting...</span></header>
-<main>
+<header><h1>gpuwatch</h1>
+  <span class="tabs" id="maintabs" hidden><button data-tab="usage" class="on">Usage</button> <button data-tab="prio">Priorities</button></span>
+  <span id="top" class="muted tiny">connecting...</span></header>
+<section id="prio" hidden><iframe id="prioframe" title="Priorities" scrolling="no"></iframe></section>
+<main id="usage">
   <section class="card"><h2>Now</h2><div id="now" class="grid"></div><div id="idle" class="muted tiny"></div></section>
   <section class="card">
     <h2>History <span class="tabs" id="range"></span></h2>
@@ -101,6 +106,26 @@ async function events() {
     return esc(e.kind); };
   $("events").innerHTML = d.map(e => `<tr><td class="muted tiny" style="white-space:nowrap">${clock(e.ts)}</td><td class="k-${e.kind}">${text(e)}</td></tr>`).join("") || "<tr><td class='muted'>Nothing recorded yet.</td></tr>";
 }
+// "Priorities" tab: shown only when a gpuarbiter answers behind /arbiter/ (the server passes it through)
+function showTab(t) {
+  const prio = t === "prio" && !$("maintabs").hidden;
+  $("usage").hidden = prio; $("prio").hidden = !prio;
+  [...$("maintabs").querySelectorAll("button")].forEach(b => b.classList.toggle("on", b.dataset.tab === (prio ? "prio" : "usage")));
+  if (prio && !$("prioframe").getAttribute("src")) $("prioframe").src = "/arbiter/";
+  try { localStorage.gwTab = prio ? "prio" : "usage"; } catch (e) {}
+  if (!prio) history_();
+}
+$("maintabs").onclick = e => { if (e.target.dataset.tab) { showTab(e.target.dataset.tab); location.hash = e.target.dataset.tab === "prio" ? "priorities" : ""; } };
+setInterval(() => { const f = $("prioframe"); try { if (!$("prio").hidden && f.contentDocument) f.style.height = Math.max(600, f.contentDocument.documentElement.scrollHeight + 8) + "px"; } catch (e) {} }, 1500);
+fetch("/arbiter/api/state").then(r => {
+  if (!r.ok) return;
+  $("maintabs").hidden = false;
+  let want = "usage";
+  try { want = localStorage.gwTab || "usage"; } catch (e) {}
+  if (location.hash === "#priorities") want = "prio";
+  showTab(want);
+}).catch(() => {});
+
 now(); history_(); stats(); events();
 setInterval(now, 2000); setInterval(() => { history_(); stats(); events(); }, 30000);
 addEventListener("resize", history_);

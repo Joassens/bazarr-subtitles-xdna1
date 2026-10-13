@@ -11,7 +11,8 @@ kept the graphics/compute engines, the video engines (encode/decode) and the DMA
     the GPU), *overlaps* (when two classes were busy at the same time) and GPU load nobody could be blamed for. That history
     is the evidence for deciding who should give way to whom.
 
-It only reads: it never pauses or changes anything. No authentication, so bind it to a LAN address. Python standard library
+It only reads: it never pauses or changes anything itself. (With `--arbiter-url` it also passes a few fixed paths through to a gpuarbiter next to
+it, so the page can show that as a "Priorities" tab; the arbiter does the controlling.) No authentication, so bind it to a LAN address. Python standard library
 only. Classes come from built-in rules for a typical Proxmox media host; override them with `--rules rules.json`:
 
     [{"class": "Plex", "container": "114", "comm": "^Plex"}, {"class": "LLM", "container": "104", "comm": "llama"}]
@@ -31,7 +32,9 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 log = logging.getLogger("gpuwatch")
@@ -393,10 +396,42 @@ def metrics(st: State) -> str:
     return "\n".join(out) + "\n"
 
 
-def make_handler(st: State, page: bytes):
+ARBITER_PATHS = {("GET", "/arbiter/"): "/", ("GET", "/arbiter/api/state"): "/api/state", ("GET", "/arbiter/api/events"): "/api/events",
+                 ("GET", "/arbiter/api/config"): "/api/config", ("POST", "/arbiter/api/config"): "/api/config"}
+
+
+def make_handler(st: State, page: bytes, arbiter_url: str = ""):
+    """`arbiter_url` (optional): a gpuarbiter running next to this service. Its page and API are passed through under /arbiter/ so the page
+    can show it as a tab; only those few fixed paths are forwarded, to that one address."""
+    arbiter_url = arbiter_url.rstrip("/")
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
+
+        def _proxy(self, method, path):
+            body = None
+            if method == "POST":
+                n = int(self.headers.get("Content-Length") or 0)
+                if n > 262144:
+                    return self._send({"error": "request too large"}, code=413)
+                body = self.rfile.read(n)                  # consume the body before answering, whatever the answer is
+            upstream = ARBITER_PATHS.get((method, path))
+            if not arbiter_url or upstream is None:
+                return self._send({"error": "not found"}, code=404)
+            req = urllib.request.Request(arbiter_url + upstream, data=body, method=method,
+                                         headers={"Content-Type": self.headers.get("Content-Type", "application/json"),
+                                                  "X-Requested-With": self.headers.get("X-Requested-With", "")})
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    return self._send(r.read(), r.headers.get("Content-Type", "application/json"), r.status)
+            except urllib.error.HTTPError as exc:
+                return self._send(exc.read(), exc.headers.get("Content-Type", "application/json"), exc.code)
+            except Exception:                            # noqa: BLE001
+                return self._send({"error": "the arbiter does not answer"}, code=502)
+
+        def do_POST(self):                               # noqa: N802
+            self._proxy("POST", urllib.parse.urlsplit(self.path).path)
 
         def _send(self, body, ctype="application/json", code=200):
             raw = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body)).encode()
@@ -411,6 +446,13 @@ def make_handler(st: State, page: bytes):
             u = urllib.parse.urlsplit(self.path)
             q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
             num = lambda k, d: int(q[k]) if q.get(k, "").isdigit() else d          # noqa: E731
+            if u.path == "/arbiter":
+                self.send_response(302)
+                self.send_header("Location", "/arbiter/")
+                self.end_headers()
+                return
+            if u.path.startswith("/arbiter/"):
+                return self._proxy("GET", u.path)
             if u.path in ("/", "/index.html"):
                 return self._send(page, "text/html; charset=utf-8")
             if u.path == "/api/now":
@@ -438,14 +480,15 @@ def main():
     ap.add_argument("--active-pct", type=float, default=3.0, help="load from which a class counts as using the GPU")
     ap.add_argument("--quiet-s", type=float, default=15.0, help="seconds of quiet that end a session")
     ap.add_argument("--retention-days", type=int, default=30)
+    ap.add_argument("--arbiter-url", default="", help="a gpuarbiter next to this service (e.g. http://127.0.0.1:9620): shown as the Priorities tab")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     rules = json.load(open(a.rules)) if a.rules else DEFAULT_RULES
     page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gpuwatch.html"), "rb").read()
     st = State(Collector(rules), Recorder(a.db, active_pct=a.active_pct, quiet_s=a.quiet_s, retention_days=a.retention_days), a.interval)
     threading.Thread(target=st.loop, daemon=True).start()
-    log.info("gpuwatch on %s:%s, database %s", a.bind, a.port, a.db)
-    ThreadingHTTPServer((a.bind, a.port), make_handler(st, page)).serve_forever()
+    log.info("gpuwatch on %s:%s, database %s%s", a.bind, a.port, a.db, f", arbiter {a.arbiter_url}" if a.arbiter_url else "")
+    ThreadingHTTPServer((a.bind, a.port), make_handler(st, page, a.arbiter_url)).serve_forever()
 
 
 if __name__ == "__main__":

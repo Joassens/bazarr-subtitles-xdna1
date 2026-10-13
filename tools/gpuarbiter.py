@@ -325,12 +325,14 @@ def make_handler(arb: Arbiter, cfgfile: ConfigFile, page: bytes):
             self._send({"error": "not found"}, code=404)
 
         def do_POST(self):                                   # noqa: N802
+            n = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(n) if 0 < n <= 262144 else b""      # always consume the body before answering
             if self.path.split("?")[0] != "/api/config":
                 return self._send({"error": "not found"}, code=404)
             if self.headers.get("X-Requested-With") != "arbiter":
                 return self._send({"error": "missing X-Requested-With header"}, code=403)
             try:
-                new = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode())
+                new = json.loads(raw.decode())
             except ValueError:
                 return self._send({"error": "not valid JSON"}, code=400)
             errs = validate(merged(new))
