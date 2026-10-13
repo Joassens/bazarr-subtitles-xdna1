@@ -132,6 +132,18 @@ class RecorderTest(unittest.TestCase):
         self.assertEqual((pair["a"], pair["b"]), ("A", "B"))
         self.assertTrue(5 <= pair["seconds"] <= 15, pair)
 
+    def test_sessions_remember_what_the_class_was_running(self):
+        r = gpuwatch.Recorder(":memory:")
+        for t in range(3000, 3030):
+            s = sample(float(t), gpu=40, Jellyfin=40.0)
+            s["classes"]["Jellyfin"]["procs"] = [{"pid": 1, "comm": "ffmpeg", "container": "114", "cmd": "ffmpeg -skip_frame nokey -i /media/x.mkv -vf tile"}]
+            r.add(s)
+        for t in range(3030, 3060):
+            r.add(sample(float(t), gpu=0))
+        ev = {e["kind"]: e["detail"] for e in r.events(10) if e["class"] == "Jellyfin"}
+        self.assertIn("-skip_frame nokey", ev["start"]["cmd"])
+        self.assertEqual(len(ev["stop"]["cmds"]), 1)
+
     def test_busy_gpu_nobody_is_blamed_for(self):
         r = gpuwatch.Recorder(":memory:")
         for t in range(2000, 2041):

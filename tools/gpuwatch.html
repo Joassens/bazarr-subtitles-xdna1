@@ -99,8 +99,9 @@ async function stats() {
 async function events() {
   const d = await get("/api/events?limit=60");
   const text = e => { const x = e.detail;
-    if (e.kind === "start") return `${esc(e.class)} started using the GPU (${x.load}%)`;
-    if (e.kind === "stop") return `${esc(e.class)} stopped after ${dur(x.seconds)} (avg ${x.avg}%, peak ${x.peak}%)`;
+    const cmd = c => c ? `<div class="muted tiny" style="word-break:break-all">${esc(c.length > 150 ? c.slice(0, 150) + "…" : c)}</div>` : "";
+    if (e.kind === "start") return `${esc(e.class)} started using the GPU (${x.load}%)${cmd(x.cmd)}`;
+    if (e.kind === "stop") return `${esc(e.class)} stopped after ${dur(x.seconds)} (avg ${x.avg}%, peak ${x.peak}%)${(x.cmds || []).slice(0, 1).map(cmd).join("")}`;
     if (e.kind === "overlap_start") return `Overlap: ${x.classes.map(esc).join(" + ")} (GPU ${x.gpu_busy}%)`;
     if (e.kind === "overlap_end") return `Overlap ended after ${dur(x.seconds)}: ${x.classes.map(esc).join(" + ")} (GPU peak ${x.gpu_busy_max}%)`;
     return esc(e.kind); };
