@@ -290,9 +290,13 @@ class Recorder:
             ld = load_of(e)
             if ld >= self.active_pct:
                 ss = self.sessions.get(cls)
+                cmds = [p.get("cmd", "")[:160] for p in (e.get("procs") or []) if p.get("cmd")]
                 if ss is None:
-                    ss = self.sessions[cls] = {"start": now, "last": now, "peak": 0.0, "sum": 0.0, "n": 0}
-                    self.event(now, "start", cls, load=ld)
+                    ss = self.sessions[cls] = {"start": now, "last": now, "peak": 0.0, "sum": 0.0, "n": 0, "cmds": []}
+                    self.event(now, "start", cls, load=ld, cmd=cmds[0] if cmds else "")      # what was it doing? (playback or background work)
+                for c in cmds:
+                    if c not in ss["cmds"] and len(ss["cmds"]) < 3:
+                        ss["cmds"].append(c)
                 ss["last"] = now
                 ss["peak"] = max(ss["peak"], ld)
                 ss["sum"] += ld
@@ -300,7 +304,7 @@ class Recorder:
         for cls in [c for c, ss in self.sessions.items() if now - ss["last"] >= self.quiet_s]:
             ss = self.sessions.pop(cls)
             self.event(now, "stop", cls, seconds=round(ss["last"] - ss["start"]), peak=round(ss["peak"], 1),
-                       avg=round(ss["sum"] / max(ss["n"], 1), 1))
+                       avg=round(ss["sum"] / max(ss["n"], 1), 1), cmds=ss["cmds"])
         running = set(self.sessions)
         gpu = s["gpu_busy"] or 0
         if len(running) >= 2:
