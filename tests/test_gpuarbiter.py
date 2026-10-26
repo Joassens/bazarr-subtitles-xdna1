@@ -28,7 +28,7 @@ class FakeController:
 
 class Rig:
     """A fake clock, fake gpuwatch/hostmem data and a fake Tdarr."""
-    def __init__(self, **cfg):
+    def __init__(self, state_path=None, **cfg):
         self.t = 1000.0
         self.classes = {}
         self.ram = 20.0
@@ -36,7 +36,8 @@ class Rig:
         self.ctl = FakeController()
         base = {"dry_run": False, "poll_s": 5, "hold_s": 10, "release_s": 60, "manual_override_s": 300}
         base.update(cfg)
-        self.arb = gpuarbiter.Arbiter(base, gpuarbiter.Events(":memory:"), {"tdarr": self.ctl}, clock=lambda: self.t, fetch=self._fetch)
+        self.arb = gpuarbiter.Arbiter(base, gpuarbiter.Events(":memory:"), {"tdarr": self.ctl}, clock=lambda: self.t, fetch=self._fetch,
+                                    state_path=state_path)
 
     def _fetch(self, url):
         if "9610" in url or "gpuwatch" in url:
@@ -192,6 +193,39 @@ class TdarrControlTest(unittest.TestCase):
     def test_a_passive_node_does_not_change_what_paused_reports(self):
         s = FakeTdarr(a=("Main", False), b=("Failover", True))
         self.assertFalse(tdarr(s, nodes=["Main"], passive_nodes=["Failover"]).paused())
+
+
+class StateTest(unittest.TestCase):
+    def test_what_we_paused_survives_a_restart(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "state.json")
+            r = Rig(state_path=path)
+            r.run(40, classes={"Plex": busy(media=50)})
+            self.assertTrue(r.ctl.p)
+            with open(path) as f:
+                self.assertEqual(json.load(f), {"we_paused": {"Tdarr": True}})
+            r2 = Rig(state_path=path)                      # a restart: new arbiter, same state file, node still paused
+            r2.ctl.p = True
+            r2.run(200, classes={})
+            self.assertFalse(r2.ctl.p, "it paused the node before the restart, so it resumes it")
+            self.assertEqual(r2.ctl.calls, [False])
+
+    def test_without_a_state_file_a_paused_node_is_left_alone(self):
+        r = Rig()
+        r.ctl.p = True
+        r.run(200, classes={})
+        self.assertTrue(r.ctl.p, "after a restart it cannot know it paused the node itself")
+
+    def test_a_broken_state_file_is_ignored_and_replaced(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "state.json")
+            with open(path, "w") as f:
+                f.write("{not json")
+            r = Rig(state_path=path)
+            r.run(40, classes={"Plex": busy(media=50)})
+            self.assertTrue(r.ctl.p)
+            with open(path) as f:
+                self.assertEqual(json.load(f), {"we_paused": {"Tdarr": True}})
 
 
 class ConfigTest(unittest.TestCase):

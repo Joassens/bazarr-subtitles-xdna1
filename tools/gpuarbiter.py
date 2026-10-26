@@ -157,7 +157,7 @@ class Events:
 
 
 class Arbiter:
-    def __init__(self, cfg, events, controllers=None, clock=time.time, fetch=fetch_json):
+    def __init__(self, cfg, events, controllers=None, clock=time.time, fetch=fetch_json, state_path=None):
         self.cfg, self.events, self.clock, self.fetch = merged(cfg), events, clock, fetch
         self.controllers = controllers if controllers is not None else {}
         self.reasons = {}            # consumer -> {reason: {"since": t, "last": t}}
@@ -168,6 +168,32 @@ class Arbiter:
         self.last_paused = {}        # consumer -> last seen state of the controller
         self.note_at = {}            # consumer -> when the "paused by somebody else" note was last written
         self.lock = threading.Lock()
+        self.state_path = state_path  # remembers `we_paused` over restarts and reboots
+        self._saved = None
+        self._load_state()
+
+    def _load_state(self):
+        if not self.state_path:
+            return
+        try:
+            with open(self.state_path) as f:
+                self.we_paused = {k: bool(v) for k, v in json.load(f).get("we_paused", {}).items()}
+            self._saved = dict(self.we_paused)
+            log.info("restored state: we_paused=%s", self.we_paused)
+        except (OSError, ValueError):
+            pass
+
+    def _save_state(self):
+        if not self.state_path or self.we_paused == self._saved:
+            return
+        try:
+            tmp = self.state_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump({"we_paused": self.we_paused}, f)
+            os.replace(tmp, self.state_path)
+            self._saved = dict(self.we_paused)
+        except OSError as exc:
+            log.warning("cannot save state: %s", exc)
 
     def set_config(self, cfg):
         with self.lock:
@@ -218,6 +244,7 @@ class Arbiter:
                 return                                       # no view of the GPU: change nothing rather than guess
             for consumer in [x["name"] for x in c["classes"] if x.get("controller")]:
                 self._consumer(consumer, classes, ram)
+            self._save_state()
 
     def _consumer(self, consumer, classes, ram):
         c, now = self.cfg, self.clock()
@@ -376,7 +403,7 @@ def main():
     if problems:
         raise SystemExit("config problems: " + "; ".join(problems))
     controllers = {k: TdarrControl(v["url"], v.get("nodes"), v.get("passive_nodes")) for k, v in cfg["controllers"].items() if v.get("type") == "tdarr"}
-    arb = Arbiter(cfg, Events(a.db), controllers)
+    arb = Arbiter(cfg, Events(a.db), controllers, state_path=os.path.join(os.path.dirname(os.path.abspath(a.db)), "state.json"))
     page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gpuarbiter.html"), "rb").read()
 
     def loop():

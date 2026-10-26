@@ -24,6 +24,8 @@ A class with a `controller` yields to every class with a **lower priority number
 * It resumes only what **it** paused. A node somebody paused by hand is left alone. If somebody resumes it by hand while a rule holds it, that is
   respected for `manual_override_s`.
 * `hold_s` (default 10 s) ignores blips; `release_s` (default 180 s) keeps it paused until the other work has been quiet that long.
+* **Restarts:** what it paused itself is saved to `state.json` next to the events database and restored at start, so a restart or reboot does not
+  leave a node paused for good. Without a state file it would treat that node as paused by somebody else and never resume it.
 * **RAM guard**: pauses below `pause_below_gb` free RAM, resumes above `resume_above_gb` (hysteresis, resumes at once).
 * **Which nodes:** a Tdarr server can have nodes on other GPUs that share no engine with a media server on the host GPU. Give the controller a
   `nodes` list (names or ids) and only those nodes are paused and resumed; without it every node of the server is controlled.

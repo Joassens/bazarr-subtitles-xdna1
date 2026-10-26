@@ -13,6 +13,7 @@
 - The Tdarr controller takes an optional `nodes` list (names or ids): only those nodes are paused and resumed, so a node on a GPU that shares no
   engine with the media server keeps working.
 - `passive_nodes`: failover nodes that work while the controlled nodes are held back and wait while they work.
+- The arbiter remembers what it paused itself (`state.json` next to the events database), so a restart or reboot no longer leaves a node paused.
 
 ### gpuwatch (new tool)
 - `tools/gpuwatch.py` + `gpuwatch.html`: read-only service that shows which container/process uses the AMD GPU (per-client
