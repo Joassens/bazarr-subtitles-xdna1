@@ -75,7 +75,8 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(sorted(first["classes"]), ["LLM (llama-server)", "Plex", "Tdarr", "somethingelse (CT120)"])
         self.assertEqual(first["classes"]["Tdarr"]["gfx"], 0.0)                                   # no previous reading yet
         self.t[0] = 1002.0
-        put(f"{self.root}/11/fdinfo/5", fdinfo(1, gfx=1_000_000_000, vram_kib=1 << 20))           # 1 s of 2 s on the gfx engine
+        for fd in ("5", "6"):                                                                     # both fds of one client report the same counters
+            put(f"{self.root}/11/fdinfo/{fd}", fdinfo(1, gfx=1_000_000_000, vram_kib=1 << 20))    # 1 s of 2 s on the gfx engine
         put(f"{self.root}/12/fdinfo/4", fdinfo(2, dec=500_000_000, enc=500_000_000))              # media: 1 s in total
         s = self.c.sample()
         llm = s["classes"]["LLM (llama-server)"]
