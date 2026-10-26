@@ -27,6 +27,8 @@ A class with a `controller` yields to every class with a **lower priority number
 * **RAM guard**: pauses below `pause_below_gb` free RAM, resumes above `resume_above_gb` (hysteresis, resumes at once).
 * **Which nodes:** a Tdarr server can have nodes on other GPUs that share no engine with a media server on the host GPU. Give the controller a
   `nodes` list (names or ids) and only those nodes are paused and resumed; without it every node of the server is controlled.
+* **Failover nodes:** `passive_nodes` (names or ids) do the opposite. They are paused while the controlled nodes work and released while those are
+  held back, so a second machine takes over the queue instead of everything standing still.
 * No view of the GPU (gpuwatch down) means no change: no data is not the same as quiet.
 * `dry_run: true` only writes what it *would* do to the log.
 * Every decision (pause, resume, would pause, error, a config change) is stored in SQLite and shown on the page.
@@ -56,7 +58,8 @@ keeps a stray cross-site request from changing it.
 {
   "dry_run": false,
   "sources": {"gpuwatch": "http://<host>:9610/api/now", "hostmem": "http://<host>:9600/"},
-  "controllers": {"tdarr": {"type": "tdarr", "url": "http://<tdarr-host>:8265", "nodes": ["<node name or id>"]}},
+  "controllers": {"tdarr": {"type": "tdarr", "url": "http://<tdarr-host>:8265", "nodes": ["<node name or id>"],
+                          "passive_nodes": ["<failover node name or id>"]}},
   "classes": [
     {"name": "Plex", "priority": 1, "engines": ["media"]},
     {"name": "Tdarr", "priority": 4, "engines": ["media"], "controller": "tdarr"}

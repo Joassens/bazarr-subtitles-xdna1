@@ -95,15 +95,20 @@ class TdarrControl:
     """Pause/resume the nodes of a Tdarr server (pausing only stops new jobs from starting). `nodes` (names or ids) limits it to the nodes that share the
     GPU engine with the other consumers; without it every node is controlled."""
 
-    def __init__(self, url, nodes=None):
+    def __init__(self, url, nodes=None, passive_nodes=None):
         self.url = url.rstrip("/") + "/api/v2"
         self.nodes = [str(n) for n in nodes] if nodes else None
+        self.passive = [str(n) for n in passive_nodes] if passive_nodes else []
 
     def _selected(self):
         nodes = self._call("get-nodes") or {}
         if self.nodes is None:
             return nodes
         return {nid: n for nid, n in nodes.items() if nid in self.nodes or n.get("nodeName") in self.nodes}
+
+    def _passive_nodes(self):
+        nodes = self._call("get-nodes") or {}
+        return {nid: n for nid, n in nodes.items() if nid in self.passive or n.get("nodeName") in self.passive}
 
     def _call(self, path, payload=None):
         req = urllib.request.Request(f"{self.url}/{path}", data=json.dumps(payload).encode() if payload is not None else None,
@@ -123,6 +128,9 @@ class TdarrControl:
     def set_paused(self, value: bool):
         for nid in self._selected():
             self._call("update-node", {"data": {"nodeID": nid, "nodeUpdates": {"nodePaused": bool(value)}}})
+        # passive (failover) nodes do the opposite: they work while the active nodes are held back, and wait while the active nodes work
+        for nid in self._passive_nodes():
+            self._call("update-node", {"data": {"nodeID": nid, "nodeUpdates": {"nodePaused": not bool(value)}}})
 
 
 class Events:
@@ -367,7 +375,7 @@ def main():
     problems = validate(cfg)
     if problems:
         raise SystemExit("config problems: " + "; ".join(problems))
-    controllers = {k: TdarrControl(v["url"], v.get("nodes")) for k, v in cfg["controllers"].items() if v.get("type") == "tdarr"}
+    controllers = {k: TdarrControl(v["url"], v.get("nodes"), v.get("passive_nodes")) for k, v in cfg["controllers"].items() if v.get("type") == "tdarr"}
     arb = Arbiter(cfg, Events(a.db), controllers)
     page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gpuarbiter.html"), "rb").read()
 

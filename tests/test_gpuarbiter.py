@@ -181,6 +181,18 @@ class TdarrControlTest(unittest.TestCase):
         self.assertTrue(tdarr(s, nodes=["Main"]).paused())
         self.assertFalse(tdarr(s).paused(), "without a list one running node means not paused")
 
+    def test_passive_nodes_work_while_the_active_ones_wait(self):
+        s = FakeTdarr(a=("Main", False), b=("Failover", True))
+        c = tdarr(s, nodes=["Main"], passive_nodes=["Failover"])
+        c.set_paused(True)
+        self.assertEqual(s.paused(), {"Main": True, "Failover": False})
+        c.set_paused(False)
+        self.assertEqual(s.paused(), {"Main": False, "Failover": True})
+
+    def test_a_passive_node_does_not_change_what_paused_reports(self):
+        s = FakeTdarr(a=("Main", False), b=("Failover", True))
+        self.assertFalse(tdarr(s, nodes=["Main"], passive_nodes=["Failover"]).paused())
+
 
 class ConfigTest(unittest.TestCase):
     def test_validation(self):
