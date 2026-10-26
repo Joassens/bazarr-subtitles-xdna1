@@ -10,6 +10,8 @@
 - `tools/gpuarbiter.py` + `gpuarbiter.html`: pauses a Tdarr node while a higher-priority class (for example a media server) uses the same GPU
   engine, or when host RAM is low, and resumes it after a quiet period. Per-engine priorities, dry-run mode, a log of every decision, an editable
   page, respects manual pauses/resumes. See [docs/gpuarbiter.md](docs/gpuarbiter.md).
+- The Tdarr controller takes an optional `nodes` list (names or ids): only those nodes are paused and resumed, so a node on a GPU that shares no
+  engine with the media server keeps working.
 
 ### gpuwatch (new tool)
 - `tools/gpuwatch.py` + `gpuwatch.html`: read-only service that shows which container/process uses the AMD GPU (per-client

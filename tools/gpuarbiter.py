@@ -92,10 +92,18 @@ def fetch_json(url, timeout=5):
 
 
 class TdarrControl:
-    """Pause/resume every node of a Tdarr server (pausing only stops new jobs from starting)."""
+    """Pause/resume the nodes of a Tdarr server (pausing only stops new jobs from starting). `nodes` (names or ids) limits it to the nodes that share the
+    GPU engine with the other consumers; without it every node is controlled."""
 
-    def __init__(self, url):
+    def __init__(self, url, nodes=None):
         self.url = url.rstrip("/") + "/api/v2"
+        self.nodes = [str(n) for n in nodes] if nodes else None
+
+    def _selected(self):
+        nodes = self._call("get-nodes") or {}
+        if self.nodes is None:
+            return nodes
+        return {nid: n for nid, n in nodes.items() if nid in self.nodes or n.get("nodeName") in self.nodes}
 
     def _call(self, path, payload=None):
         req = urllib.request.Request(f"{self.url}/{path}", data=json.dumps(payload).encode() if payload is not None else None,
@@ -109,11 +117,11 @@ class TdarrControl:
 
     def paused(self):
         """True when all nodes are paused, False when at least one runs."""
-        nodes = self._call("get-nodes")
+        nodes = self._selected()
         return all(bool(n.get("nodePaused")) for n in nodes.values()) if nodes else False
 
     def set_paused(self, value: bool):
-        for nid in self._call("get-nodes"):
+        for nid in self._selected():
             self._call("update-node", {"data": {"nodeID": nid, "nodeUpdates": {"nodePaused": bool(value)}}})
 
 
@@ -359,7 +367,7 @@ def main():
     problems = validate(cfg)
     if problems:
         raise SystemExit("config problems: " + "; ".join(problems))
-    controllers = {k: TdarrControl(v["url"]) for k, v in cfg["controllers"].items() if v.get("type") == "tdarr"}
+    controllers = {k: TdarrControl(v["url"], v.get("nodes")) for k, v in cfg["controllers"].items() if v.get("type") == "tdarr"}
     arb = Arbiter(cfg, Events(a.db), controllers)
     page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gpuarbiter.html"), "rb").read()
 

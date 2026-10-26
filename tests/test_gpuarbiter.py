@@ -141,6 +141,47 @@ class ArbiterTest(unittest.TestCase):
         self.assertTrue(r.ctl.p)
 
 
+class FakeTdarr:
+    """The Tdarr server API behind TdarrControl: get-nodes and update-node on a few fake nodes."""
+    def __init__(self, **nodes):                           # id=(name, paused)
+        self.nodes = {nid: {"nodeName": name, "nodePaused": paused} for nid, (name, paused) in nodes.items()}
+
+    def __call__(self, path, payload=None):
+        if path == "get-nodes":
+            return self.nodes
+        data = payload["data"]
+        self.nodes[data["nodeID"]]["nodePaused"] = data["nodeUpdates"]["nodePaused"]
+        return {}
+
+    def paused(self):
+        return {n["nodeName"]: n["nodePaused"] for n in self.nodes.values()}
+
+
+def tdarr(server, **kw):
+    ctl = gpuarbiter.TdarrControl("http://tdarr:8265", **kw)
+    ctl._call = server
+    return ctl
+
+
+class TdarrControlTest(unittest.TestCase):
+    def test_without_a_node_list_every_node_is_controlled(self):
+        s = FakeTdarr(a=("Main", False), b=("Second", False))
+        c = tdarr(s)
+        c.set_paused(True)
+        self.assertEqual(s.paused(), {"Main": True, "Second": True})
+        self.assertTrue(c.paused())
+
+    def test_only_the_listed_nodes_are_controlled_by_name_or_id(self):
+        s = FakeTdarr(a=("Main", False), b=("Second", False), c=("Third", False))
+        tdarr(s, nodes=["Main", "c"]).set_paused(True)     # one by name, one by id
+        self.assertEqual(s.paused(), {"Main": True, "Second": False, "Third": True})
+
+    def test_paused_only_looks_at_the_listed_nodes(self):
+        s = FakeTdarr(a=("Main", True), b=("Second", False))
+        self.assertTrue(tdarr(s, nodes=["Main"]).paused())
+        self.assertFalse(tdarr(s).paused(), "without a list one running node means not paused")
+
+
 class ConfigTest(unittest.TestCase):
     def test_validation(self):
         good = gpuarbiter.merged({})
