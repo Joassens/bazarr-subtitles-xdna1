@@ -8,7 +8,8 @@ npusubs depends on, but does not bundle, the following projects. Their licences 
   FastAPI / Uvicorn              MIT / BSD           HTTP server
 
 The bridge/ directory contains a modified copy of McCloudS/bazarr-openai-whisperbridge, Apache-2.0
-(see bridge/LICENSE and bridge/NOTICE-CHANGES.md). The rest of the repository is MIT.
+(see bridge/LICENSE and bridge/NOTICE-CHANGES.md); that directory keeps its Apache-2.0 licence and the
+original notices. The rest of the repository is in the public domain (The Unlicense, see LICENSE).
 
 Model weights are downloaded at runtime and are not part of this repository:
   openai/whisper large-v3-turbo  MIT

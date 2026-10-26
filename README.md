@@ -236,4 +236,5 @@ The unit tests also run in CI (`.github/workflows/tests.yml`). See [CHANGELOG.md
 * Ideas (no code copied) from projects such as GeiserX/whisper-subs (GPL-3.0), stayallive/whisper-subtitles and
   giakinh0823/whisper-subtitle-generator.
 
-This project: MIT, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+This project: public domain ([The Unlicense](LICENSE)), no copyright claimed. The `bridge/` directory is a modified copy of an Apache-2.0
+project and keeps that licence. See [NOTICE](NOTICE).

@@ -7,7 +7,7 @@ name = "npusubs"
 version = "0.1.0"
 description = "Subtitle-grade Whisper on the AMD XDNA1 NPU, speaking the whisper-asr-webservice API"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Unlicense" }
 requires-python = ">=3.11"
 dependencies = [
   "numpy",
