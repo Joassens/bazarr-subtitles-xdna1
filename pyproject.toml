@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "npusubs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Subtitle-grade Whisper on the AMD XDNA1 NPU, speaking the whisper-asr-webservice API"
 readme = "README.md"
 license = { text = "Unlicense" }

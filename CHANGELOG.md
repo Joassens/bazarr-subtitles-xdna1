@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-26)
+
+### License
+- Public domain ([The Unlicense](LICENSE)) instead of MIT; no copyright is claimed. `bridge/` is a modified copy of an Apache-2.0 project and keeps
+  that licence and the upstream notices.
 
 ### gpuwatch: Priorities tab
 - `gpuwatch --arbiter-url`: passes the gpuarbiter's page and API through under `/arbiter/`; the page shows it as a **Priorities** tab. The arbiter can then

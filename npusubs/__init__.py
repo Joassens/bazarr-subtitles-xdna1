@@ -5,4 +5,4 @@ else (decoding, word timestamps, VAD, speaker diarization, subtitle formatting)
 runs on the CPU. Speaks the whisper-asr-webservice API that Bazarr's "Whisper"
 provider uses, plus an OpenAI-compatible /v1/audio/transcriptions endpoint.
 """
-__version__ = "0.1.0"
+__version__ = "0.2.0"
